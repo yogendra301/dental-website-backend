@@ -1,0 +1,3036 @@
+import { resolveClinicConfig } from './resolve-config.js';
+import { initI18n } from './i18n.js';
+import { renderAppointmentCard, formatTime12 } from './appointment-card.js';
+import clientConfig from './client-config.js';
+
+let clinicConfig = null;
+const API_BASE = clientConfig.apiBase;
+
+// Same pattern as app.js — single helper for all asset URLs
+const ASSET_ORIGIN = API_BASE.replace(/\/index\.php.*$/, '');
+function assetUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http')) return path;
+    return ASSET_ORIGIN + path;
+}
+
+// Generic asset uploader used by config panel image fields.
+// type: 'logo'|'hero'|'video'|'doctor'|'step'|'service'
+// onSuccess(url) called with the stored root-relative path.
+async function cfgUploadAsset(file, type, onSuccess, onError) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('type', type);
+    try {
+        const res = await fetch(`${API_BASE}/api/upload/asset`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + getAuthToken() },
+            body: fd
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        onSuccess(data.url);
+    } catch(e) {
+        if (onError) onError(e.message);
+        else cfgStatus('Upload failed: ' + e.message, 'error');
+    }
+}
+
+// Builds a reusable upload field: text input (manual URL) + file picker + preview thumbnail.
+// Replaces the raw <input> pattern used across every image field in the config panel.
+// Usage: cfgMakeUploadField(inputEl, assetType)
+function cfgMakeUploadField(inputEl, assetType) {
+    const isVideo = assetType === 'video';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cfg-upload-field flex gap-2 items-center';
+
+    const preview = document.createElement(isVideo ? 'video' : 'img');
+    preview.className = 'h-10 w-10 rounded object-cover bg-slate-100 border border-slate-200 flex-shrink-0';
+    if (isVideo) { preview.muted = true; preview.loop = true; preview.autoplay = true; }
+
+    const refreshPreview = (path) => {
+        const full = assetUrl(path);
+        if (isVideo) { preview.src = full || ''; }
+        else { preview.src = full || ''; preview.style.display = full ? '' : 'none'; }
+    };
+    refreshPreview(inputEl.value);
+
+    inputEl.addEventListener('input', () => refreshPreview(inputEl.value));
+
+    const label = document.createElement('label');
+    label.className = 'cursor-pointer text-xs text-accent font-bold hover:underline whitespace-nowrap';
+    label.textContent = isVideo ? '↑ Video' : '↑ Image';
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = isVideo ? 'video/mp4,video/webm' : 'image/*';
+    fileInput.className = 'hidden';
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+        label.textContent = 'Uploading…';
+        await cfgUploadAsset(file, assetType, (url) => {
+            inputEl.value = url;
+            refreshPreview(url);
+            label.textContent = isVideo ? '↑ Video' : '↑ Image';
+        }, () => { label.textContent = isVideo ? '↑ Video' : '↑ Image'; });
+    });
+    label.appendChild(fileInput);
+
+    // Insert: [preview] [existing input] [upload label]
+    inputEl.parentNode.insertBefore(wrapper, inputEl);
+    wrapper.appendChild(preview);
+    wrapper.appendChild(inputEl);
+    wrapper.appendChild(label);
+}
+
+// ── Super Admin Config ─────────────────────────────────────────
+const SUPER_ADMIN_IDS = ['superadmin', 'bunty']; // add your username(s) here
+
+function getLocalDateString(date = new Date()) {
+    const offset = date.getTimezoneOffset();
+    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().split('T')[0];
+}
+
+function getAuthToken() {
+    return localStorage.getItem('admin_token') || sessionStorage.getItem('admin_token');
+}
+
+function getClinicUsername() {
+    return localStorage.getItem('admin_clinic_username') || sessionStorage.getItem('admin_clinic_username');
+}
+
+function setAuthToken(token, username, persist) {
+    if (persist) {
+        localStorage.setItem('admin_token', token);
+        localStorage.setItem('admin_clinic_username', username);
+    } else {
+        sessionStorage.setItem('admin_token', token);
+        sessionStorage.setItem('admin_clinic_username', username);
+    }
+}
+
+function clearAuthToken() {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_clinic_username');
+    sessionStorage.removeItem('admin_token');
+    sessionStorage.removeItem('admin_clinic_username');
+    sessionStorage.removeItem('is_super_admin');
+    sessionStorage.removeItem('super_admin_pwd');
+    sessionStorage.removeItem('super_clinic_id');
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Resolve dynamic config
+    try {
+        clinicConfig = await resolveClinicConfig();
+    } catch (e) {
+        console.error('Resolve failed:', e);
+        return;
+    }
+
+    // 1. Initial styling & configs
+    initTheme();
+    
+    // Initialize Translation switch
+    initI18n(clinicConfig?.theme?.defaultLanguage);
+
+    // Expose window bridges so appointment-card.js can reach admin modal functions
+    window.clinicConfig = clinicConfig;
+    window._showCompleteModal = showCompleteModal;
+    window._showDetailModal = showDetailModal;
+    window.addReviewEntry = addReviewEntry;
+
+    // Date selection must exist before any dashboard render can read it.
+    const dateInput = document.getElementById('dashboard-date');
+    const todayStr = getLocalDateString();
+    if (dateInput) {
+        dateInput.value = todayStr;
+    }
+
+    // 2. Authentication flow check
+    const token = getAuthToken();
+    const savedUsername = getClinicUsername();
+    
+    if (token && savedUsername) {
+        showDashboard();
+    } else {
+        showLogin();
+    }
+
+    // Init forgot password modal
+    initForgotModal();
+
+    // 3. Attach Login Handler
+    document.getElementById('login-btn').addEventListener('click', handleLogin);
+    document.getElementById('admin-password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleLogin();
+    });
+    
+    // 4. Attach Logout Handler
+    document.getElementById('logout-btn').addEventListener('click', handleLogout);
+    
+    // 5. Date selection change
+    dateInput?.addEventListener('change', () => {
+        loadDailyData();
+    });
+
+    // 5.5 Quick Date Chips
+    renderQuickDateChips();
+
+    // 6. Fast Week Pick Generator
+    renderWeekFastPick();
+
+    // 7. Modals logic
+    setupModals();
+
+    // Initialize remaining features
+    initTabs();
+    initGlobalSearch();
+    initHistoryTab();
+    initReportsTab();
+    setupDocumentUpload();
+    initWalkinModal();
+    initManualLeadModal();
+
+    // 8. Block mode banner toggle
+    document.getElementById('block-mode-toggle').addEventListener('change', (e) => {
+        const banner = document.getElementById('block-mode-banner');
+        if (e.target.checked) {
+            banner.classList.add('active');
+        } else {
+            banner.classList.remove('active');
+        }
+        // Re-render to update any visual slot indicators
+        renderSlotsGrid();
+    });
+});
+
+// --- THEME & CONFIG INJECTION ---
+function initTheme() {
+    document.title = `${clinicConfig.name} - Admin Portal`;
+    document.getElementById('dashboard-clinic-name').textContent = clinicConfig.name;
+    
+    // Set variables
+    const root = document.documentElement;
+    const accent = clinicConfig.theme.accentColor || '#2DD4BF';
+    root.style.setProperty('--accent-color', accent);
+    root.style.setProperty('--accent-hover', adjustColorBrightness(accent, -15));
+    root.style.setProperty('--accent-soft', adjustColorBrightness(accent, 45));
+    const radius = clinicConfig.theme.cardStyle === 'soft' ? '1rem' : '0.125rem';
+    root.style.setProperty('--border-radius', radius);
+    
+    // Set custom fonts
+    const fontName = clinicConfig.theme.font || 'Outfit';
+    const fontLink = document.createElement('link');
+    fontLink.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/ /g, '+')}:wght@300;400;500;600;700&display=swap`;
+    fontLink.rel = 'stylesheet';
+    document.head.appendChild(fontLink);
+    document.body.style.fontFamily = `'${fontName}', sans-serif`;
+}
+
+function adjustColorBrightness(hex, percent) {
+    hex = hex.replace(/^\s*#|\s*$/g, '');
+    if(hex.length === 3) hex = hex.replace(/(.)/g, '$1$1');
+    let r = parseInt(hex.substr(0, 2), 16),
+        g = parseInt(hex.substr(2, 2), 16),
+        b = parseInt(hex.substr(4, 2), 16);
+
+    r = Math.min(255, Math.max(0, parseInt(r * (100 + percent) / 100)));
+    g = Math.min(255, Math.max(0, parseInt(g * (100 + percent) / 100)));
+    b = Math.min(255, Math.max(0, parseInt(b * (100 + percent) / 100)));
+
+    const rHex = r.toString(16).padStart(2, '0');
+    const gHex = g.toString(16).padStart(2, '0');
+    const bHex = b.toString(16).padStart(2, '0');
+
+    return `#${rHex}${gHex}${bHex}`;
+}
+
+// --- AUTH HANDLERS ---
+async function handleLogin() {
+    const usernameInput = document.getElementById('admin-clinic-slug');
+    const passwordInput = document.getElementById('admin-password');
+    const loginCard = document.getElementById('login-card');
+
+    const username = usernameInput.value.trim().toLowerCase();
+    const password = passwordInput.value.trim();
+
+    if (!username || !password) { showLoginError('Enter both clinic ID and password'); return; }
+
+    // Super admin path
+    if (SUPER_ADMIN_IDS.includes(username)) {
+        if (password !== SUPER_ADMIN_PASSWORD) {
+            loginCard.classList.add('shake');
+            setTimeout(() => loginCard.classList.remove('shake'), 500);
+            showLoginError('Invalid super admin password');
+            return;
+        }
+        await showClinicPicker();
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (!response.ok) { 
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Server returned non-JSON response. Backend may not be running.');
+            }
+            const d = await response.json(); 
+            throw new Error(d.error || 'Login failed'); 
+        }
+        const data = await response.json();
+        const rememberMe = document.getElementById('admin-remember-me')?.checked || false;
+        setAuthToken(data.token, data.clinic.username, rememberMe);
+        document.getElementById('login-error').classList.add('hidden');
+        showDashboard();
+    } catch (error) {
+        console.error(error);
+        loginCard.classList.add('shake');
+        setTimeout(() => loginCard.classList.remove('shake'), 500);
+        showLoginError(error.message);
+    }
+}
+
+function showLoginError(msg) {
+    const errorMsg = document.getElementById('login-error');
+    errorMsg.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-1"></i> ${msg}`;
+    errorMsg.classList.remove('hidden');
+}
+
+async function showClinicPicker() {
+    // Fetch all clinics list
+    let clinics = [];
+    try {
+        const res = await fetch(`${API_BASE}/api/clinics`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ superPassword: SUPER_ADMIN_PASSWORD })
+        });
+        if (res.ok) {
+            const contentType = res.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                clinics = await res.json();
+            }
+        }
+    } catch(e) { console.error('Could not fetch clinics', e); }
+
+    const modal = document.getElementById('super-clinic-picker');
+    const list = document.getElementById('super-clinic-list');
+    list.innerHTML = clinics.length
+        ? clinics.map(c => `
+            <button onclick="loginAsClinic('${c.username}')"
+                class="w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-accent hover:bg-teal-50 transition-colors text-sm font-semibold text-slate-800 flex justify-between items-center">
+                <span>${c.name || c.username}</span>
+                <span class="text-xs text-slate-400">${c.username}</span>
+            </button>`).join('')
+        : '<p class="text-sm text-slate-400 text-center py-4">No clinics found</p>';
+
+    modal.classList.remove('hidden');
+}
+
+function handleLogout() {
+    clearAuthToken();
+    showLogin();
+}
+
+function showLogin() {
+    document.getElementById('login-view').classList.remove('hidden');
+    document.getElementById('dashboard-view').classList.add('hidden');
+    
+    // Don't auto-fill or lock username - allow super admin to enter superadmin/bunty
+    const usernameInput = document.getElementById('admin-clinic-slug');
+    if (usernameInput && clinicConfig) {
+        usernameInput.value = clinicConfig.username;
+        usernameInput.readOnly = false;
+        usernameInput.classList.remove('bg-slate-100', 'cursor-not-allowed');
+    }
+}
+
+function showDashboard() {
+    document.getElementById('login-view').classList.add('hidden');
+    document.getElementById('dashboard-view').classList.remove('hidden');
+
+    const cfgTabBtn = document.querySelector('[data-tab="clinic-config"]');
+    if (cfgTabBtn) {
+        cfgTabBtn.style.display = sessionStorage.getItem('is_super_admin') === 'true' ? '' : 'none';
+    }
+
+    // Load daily data right away
+    loadDailyData();
+}
+
+// --- QUICK DATE CHIPS ---
+function renderQuickDateChips() {
+    const container = document.getElementById('quick-date-chips');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    const labels = ['Today', 'Tomorrow', '+2 Days', '+3 Days', '+4 Days'];
+    
+    labels.forEach((label, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        const dateStr = getLocalDateString(d);
+        
+        const chip = document.createElement('button');
+        chip.className = `date-chip px-3 py-1.5 rounded-full border text-xs font-semibold transition-theme ${
+            i === 0 ? 'active' : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+        }`;
+        chip.textContent = label;
+        chip.dataset.date = dateStr;
+        
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('.date-chip').forEach(c => {
+                c.className = 'date-chip px-3 py-1.5 rounded-full border text-xs font-semibold transition-theme border-slate-200 text-slate-600 hover:bg-slate-50';
+            });
+            chip.className = 'date-chip px-3 py-1.5 rounded-full border text-xs font-semibold transition-theme active';
+            document.getElementById('dashboard-date').value = dateStr;
+            loadDailyData();
+        });
+        
+        container.appendChild(chip);
+    });
+}
+
+// --- CALENDAR & WEEK SELECTOR ---
+function renderWeekFastPick() {
+    const picker = document.getElementById('week-fast-pick');
+    picker.innerHTML = '';
+    
+    const today = new Date();
+    
+    for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(today.getDate() + i);
+        
+        const dateStr = getLocalDateString(d);
+        const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short' });
+        const dateNum = d.getDate();
+        const fullDateLabel = d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+        
+        const btn = document.createElement('button');
+        // Mobile layout: small column. Desktop layout: full horizontal row
+        btn.className = `flex flex-col lg:flex-row lg:items-center justify-between p-2 lg:px-4 lg:py-2.5 rounded-theme border text-center transition-theme cursor-pointer ${
+            i === 0 ? 'bg-accent/10 border-accent text-accent font-bold' : 'border-slate-100 hover:bg-slate-50 text-slate-600'
+        }`;
+        btn.dataset.date = dateStr;
+        btn.title = fullDateLabel;
+        
+        const todayLabel = i === 0 ? '<span class="block text-[8px] opacity-60 uppercase">Today</span>' : '';
+        btn.innerHTML = `
+            <span class="text-[10px] lg:text-xs font-semibold uppercase tracking-wider">${dayLabel}</span>
+            <span class="text-sm lg:text-base font-bold">${dateNum}</span>
+            ${todayLabel}
+        `;
+        
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#week-fast-pick button').forEach(b => {
+                b.className = 'flex flex-col lg:flex-row lg:items-center justify-between p-2 lg:px-4 lg:py-2.5 rounded-theme border border-slate-100 hover:bg-slate-50 text-slate-600 transition-theme cursor-pointer';
+            });
+            btn.className = 'flex flex-col lg:flex-row lg:items-center justify-between p-2 lg:px-4 lg:py-2.5 rounded-theme border bg-accent/10 border-accent text-accent font-bold transition-theme cursor-pointer';
+            
+            document.getElementById('dashboard-date').value = dateStr;
+            loadDailyData();
+        });
+        
+        picker.appendChild(btn);
+    }
+}
+
+// --- DATA FETCHING & RENDERING ---
+let currentSlotsData = [];
+let currentAppointmentsData = [];
+async function loadDailyData() {
+    // Reset block mode on date switch to prevent accidental blocks
+    const blockToggle = document.getElementById('block-mode-toggle');
+    if (blockToggle && blockToggle.checked) {
+        blockToggle.checked = false;
+        document.getElementById('block-mode-banner')?.classList.remove('active');
+    }
+
+    const date = document.getElementById('dashboard-date').value || getLocalDateString();
+    const username = getClinicUsername();
+    const token = getAuthToken();
+    
+    if (!date || !username || !token) return;
+
+    // Set header date format
+    const formattedDateHeader = new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    document.getElementById('current-date-display').textContent = formattedDateHeader;
+    document.getElementById('day-label').textContent = formattedDateHeader;
+
+    // Show skeleton loaders while fetching
+    const grid = document.getElementById('admin-slots-grid');
+    grid.innerHTML = Array(12).fill('<div class="skeleton h-16"></div>').join('');
+    document.getElementById('upcoming-appointments-list').innerHTML = Array(3).fill('<div class="skeleton h-20 mb-3"></div>').join('');
+    
+    try {
+        // 1. Fetch Slot availability list
+        const slotsResponse = await fetch(`${API_BASE}/api/slots/availability?clinic_username=${username}&date=${date}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!slotsResponse.ok) throw new Error('Failed to load slots');
+        const slotsContentType = slotsResponse.headers.get('content-type');
+        if (!slotsContentType || !slotsContentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Backend may not be running.');
+        }
+        currentSlotsData = await slotsResponse.json();
+
+        // 2. Fetch Appointments list
+        const apptsResponse = await fetch(`${API_BASE}/api/appointments?date=${date}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!apptsResponse.ok) throw new Error('Failed to load appointments');
+        const apptsContentType = apptsResponse.headers.get('content-type');
+        if (!apptsContentType || !apptsContentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Backend may not be running.');
+        }
+        currentAppointmentsData = await apptsResponse.json();
+
+        renderSlotsGrid();
+        renderUpcomingPanel();
+        loadDashboardStats();
+    } catch (err) {
+        console.error(err);
+        grid.innerHTML = `<p class="col-span-full text-center text-rose-400 py-8 text-sm"><i class="fa-solid fa-circle-exclamation mr-2"></i>Failed to load data. Check your connection.</p>`;
+        if (err.message.includes('token') || err.message.includes('unauthorized') || err.message.includes('expired')) {
+            handleLogout();
+        }
+    }
+}
+
+function renderSlotsGrid() {
+    const grid = document.getElementById('admin-slots-grid');
+    grid.innerHTML = '';
+    const isBlockMode = document.getElementById('block-mode-toggle').checked;
+    
+    if (currentSlotsData.length === 0) {
+        grid.innerHTML = `<p class="col-span-full text-center text-slate-400 py-8 text-sm"><i class="fa-regular fa-calendar-xmark mr-2"></i>Clinic is closed on this day.</p>`;
+        return;
+    }
+
+    currentSlotsData.forEach((slot, idx) => {
+        const btn = document.createElement('button');
+        const time12 = formatTime12(slot.time_slot);
+        
+        let statusClass = '';
+        let slotTypeClass = '';
+        
+        if (slot.status === 'available') {
+            statusClass = 'border-emerald-200 text-emerald-700 bg-emerald-50/30 hover:border-emerald-400 hover:bg-emerald-50/60';
+            slotTypeClass = 'slot-available';
+        } else if (slot.status === 'booked-online') {
+            statusClass = 'bg-sky-500 text-white border-sky-500 hover:bg-sky-600';
+            slotTypeClass = 'slot-online';
+        } else if (slot.status === 'booked-phone') {
+            statusClass = 'bg-indigo-400 text-white border-indigo-400 hover:bg-indigo-500';
+            slotTypeClass = 'slot-phone';
+        } else if (slot.status === 'blocked') {
+            statusClass = 'blocked-stripes border-slate-300 text-slate-400 hover:border-rose-300';
+        }
+
+        // In block mode, highlight available slots with rose ring
+        const blockModeRing = (isBlockMode && slot.status === 'available') ? 'ring-2 ring-rose-300 ring-offset-1' : '';
+        
+        btn.className = `slot-card relative ${slotTypeClass} p-4 rounded-theme border font-bold text-sm text-center shadow-sm cursor-pointer ${statusClass} ${blockModeRing}`;
+        btn.style.animationDelay = `${idx * 30}ms`;
+        btn.title = slot.patient_name || slot.status;
+        btn.innerHTML = `
+            <span class="block text-sm">${time12}</span>
+            ${slot.patient_name
+                ? `<span class="block text-[9px] font-semibold truncate mt-0.5 leading-tight text-current">${slot.patient_name}</span>
+                   <span class="block text-[9px] font-semibold uppercase tracking-wider leading-tight text-current opacity-75">${slot.status.replace('-', ' ')}</span>`
+                : `<span class="block text-[9px] font-semibold uppercase tracking-wider mt-0.5 leading-tight text-current opacity-75">${slot.status.replace('-', ' ')}</span>`
+            }
+            ${slot.is_emergency ? `<span class="absolute top-2 right-2 text-rose-600 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)]" title="Emergency"><i class="fa-solid fa-triangle-exclamation text-[11px]"></i></span>` : ''}
+        `;
+        
+        btn.addEventListener('click', () => handleSlotClick(slot));
+        grid.appendChild(btn);
+    });
+}
+
+function renderUpcomingPanel() {
+    const panel = document.getElementById('upcoming-appointments-list');
+    panel.innerHTML = '';
+    
+    const count = currentAppointmentsData.length;
+    const panelTitle = document.getElementById('upcoming-panel-title');
+    if (panelTitle) panelTitle.textContent = `Upcoming Visits (${count})`;
+
+    if (count === 0) {
+        panel.innerHTML = `
+            <div class="text-center py-12 text-slate-400 space-y-2">
+                <i class="fa-solid fa-calendar-day text-2xl opacity-40"></i>
+                <p class="text-xs">No appointments booked for this day</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Sort: Emergency first, then chronological
+    currentAppointmentsData.sort((a, b) => {
+        if (a.is_emergency && !b.is_emergency) return -1;
+        if (!a.is_emergency && b.is_emergency) return 1;
+        return a.time_slot.localeCompare(b.time_slot);
+    });
+
+    currentAppointmentsData.forEach((appt, idx) => {
+        const card = renderAppointmentCard(appt, idx, { onRefresh: loadDailyData });
+        panel.appendChild(card);
+    });
+}
+
+// --- INTERACTIVE ACTIONS ---
+async function handleSlotClick(slot) {
+    const isBlockMode = document.getElementById('block-mode-toggle').checked;
+    const date = document.getElementById('dashboard-date').value;
+    const token = getAuthToken();
+
+    if (isBlockMode) {
+        // Toggle slot block/unblock state
+        try {
+            if (slot.status === 'blocked') {
+                // Unblock it
+                const response = await fetch(`${API_BASE}/api/slots/block?date=${date}&time_slot=${slot.time_slot}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Failed to unblock slot');
+                }
+            } else if (slot.status === 'available') {
+                // Block it
+                const response = await fetch(`${API_BASE}/api/slots/block`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ date, time_slot: slot.time_slot })
+                });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Failed to block slot');
+                }
+            } else {
+                alert('Cannot block/unblock a booked slot');
+                return;
+            }
+            loadDailyData(); // Refresh slots grid
+        } catch (err) {
+            console.error(err);
+            alert(err.message);
+        }
+    } else {
+        // Regular booking interactions
+        if (slot.status === 'available') {
+            showAddBookingModal(slot.time_slot);
+        } else if (slot.status.startsWith('booked')) {
+            const appt = currentAppointmentsData.find(a => a.time_slot === slot.time_slot);
+            if (appt) {
+                showDetailModal(appt);
+            }
+        }
+    }
+}
+
+// --- MODALS IMPLEMENTATION ---
+let activeSlotForBooking = '';
+let activeAppointmentForDetails = null;
+let activeAppointmentForComplete = null;
+
+function setupModals() {
+    // Add Booking Modal closing
+    document.getElementById('modal-close').addEventListener('click', hideAddBookingModal);
+    document.getElementById('modal-cancel-btn').addEventListener('click', hideAddBookingModal);
+    
+    // Add Booking Submit
+    document.getElementById('modal-submit-btn').addEventListener('click', submitPhoneBooking);
+
+    // Detail Modal closing
+    document.getElementById('detail-close').addEventListener('click', hideDetailModal);
+    document.getElementById('detail-ok-btn').addEventListener('click', hideDetailModal);
+
+    // Detail Modal cancel/delete appointment
+    const detailCancelBtn = document.getElementById('detail-cancel-btn');
+    if (detailCancelBtn) detailCancelBtn.addEventListener('click', cancelAppointment);
+
+    // Complete Visit Modal events (if they exist)
+    const completeModalClose = document.getElementById('complete-modal-close');
+    const completeModalCancel = document.getElementById('complete-modal-cancel-btn');
+    const completeModalSubmit = document.getElementById('complete-modal-submit-btn');
+    
+    if (completeModalClose) completeModalClose.addEventListener('click', hideCompleteModal);
+    if (completeModalCancel) completeModalCancel.addEventListener('click', hideCompleteModal);
+    if (completeModalSubmit) completeModalSubmit.addEventListener('click', submitCompleteVisit);
+}
+
+function showAddBookingModal(timeSlot) {
+    activeSlotForBooking = timeSlot;
+    document.getElementById('modal-slot-time').textContent = formatTime12(timeSlot);
+    
+    // Pre-populate service options from clinic config
+    const select = document.getElementById('modal-service');
+    const customContainer = document.getElementById('modal-custom-service-container');
+    const customInput = document.getElementById('modal-custom-service');
+    const services = Array.isArray(clinicConfig.services) ? clinicConfig.services : [];
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select a service';
+    select.appendChild(placeholder);
+    services.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = `${s.name} (${s.priceDisplay})`;
+        select.appendChild(opt);
+    });
+    const otherOpt = document.createElement('option');
+    otherOpt.value = '__custom__';
+    otherOpt.textContent = 'Other / Not Listed';
+    select.appendChild(otherOpt);
+    select.onchange = () => {
+        if (select.value === '__custom__') {
+            customContainer?.classList.remove('hidden');
+        } else {
+            customContainer?.classList.add('hidden');
+        }
+    };
+
+    // Reset fields
+    document.getElementById('modal-patient-name').value = '';
+    document.getElementById('modal-patient-phone').value = '';
+    document.getElementById('modal-problem-note').value = '';
+    document.getElementById('modal-is-emergency').checked = false;
+    document.getElementById('modal-error').classList.add('hidden');
+    if (customInput) customInput.value = '';
+    customContainer?.classList.add('hidden');
+    select.value = '';
+
+    const modal = document.getElementById('add-booking-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.firstElementChild.classList.remove('translate-y-full');
+    }, 10);
+}
+
+function hideAddBookingModal() {
+    const modal = document.getElementById('add-booking-modal');
+    modal.firstElementChild.classList.add('translate-y-full');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+async function submitPhoneBooking() {
+    const nameInput = document.getElementById('modal-patient-name');
+    const phoneInput = document.getElementById('modal-patient-phone');
+    const serviceSelect = document.getElementById('modal-service');
+    const customServiceInput = document.getElementById('modal-custom-service');
+    const errorMsg = document.getElementById('modal-error');
+    
+    errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i> Please check patient details';
+
+    const name = nameInput.value.trim();
+    const phone = phoneInput.value.trim();
+    let service = serviceSelect.value;
+    const date = document.getElementById('dashboard-date').value;
+    const token = getAuthToken();
+
+    if (serviceSelect.value === '__custom__') {
+        service = customServiceInput.value.trim();
+    }
+
+    if (name.length < 3 || phone.length !== 10 || isNaN(phone)) {
+        errorMsg.classList.remove('hidden');
+        return;
+    }
+
+    if (!service) {
+        errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i> Please select or enter a service';
+        errorMsg.classList.remove('hidden');
+        return;
+    }
+
+    errorMsg.classList.add('hidden');
+
+    try {
+        const problemNote = document.getElementById('modal-problem-note').value.trim();
+        const isEmergency = document.getElementById('modal-is-emergency').checked;
+
+        const response = await fetch(`${API_BASE}/api/appointments/admin`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` 
+            },
+            body: JSON.stringify({
+                patient_name: name,
+                patient_phone: phone,
+                service: service,
+                date: date,
+                time_slot: activeSlotForBooking,
+                problem_note: problemNote,
+                is_emergency: isEmergency
+            })
+        });
+
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Server returned non-JSON response. Backend may not be running.');
+            }
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to submit appointment');
+        }
+
+        hideAddBookingModal();
+        loadDailyData();
+    } catch (err) {
+        console.error(err);
+        alert(err.message);
+    }
+}
+
+function showDetailModal(appt) {
+    activeAppointmentForDetails = appt;
+    document.getElementById('detail-patient-name').textContent = appt.patient_name;
+    
+    const phoneLink = document.getElementById('detail-patient-phone');
+    phoneLink.textContent = `+91 ${appt.patient_phone}`;
+    phoneLink.href = `tel:${appt.patient_phone}`;
+
+    document.getElementById('detail-service').textContent = appt.service;
+    document.getElementById('detail-time-slot').textContent = formatTime12(appt.time_slot);
+    
+    const badge = document.getElementById('detail-source-badge');
+    if (appt.source === 'phone') {
+        badge.className = 'mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block bg-indigo-50 text-indigo-700 border border-indigo-100';
+        badge.textContent = 'Phone Booking';
+    } else if (appt.source === 'walkin') {
+        badge.className = 'mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block bg-teal-50 text-teal-700 border border-teal-100';
+        badge.textContent = 'Walk-in';
+    } else {
+        badge.className = 'mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block bg-sky-50 text-sky-700 border border-sky-100';
+        badge.textContent = 'Online Booking';
+    }
+
+    document.getElementById('detail-booking-modal').classList.remove('hidden');
+}
+
+// Add recalculation listener for discount auto-update
+document.addEventListener('DOMContentLoaded', () => {
+    const costInput = document.getElementById('complete-treatment-cost');
+    const discInput = document.getElementById('complete-discount');
+    const paidInput = document.getElementById('complete-amount-paid');
+
+    if (costInput && discInput && paidInput) {
+        const recalcPaid = () => {
+            const cost = parseFloat(costInput.value) || 0;
+            const disc = parseFloat(discInput.value) || 0;
+            paidInput.value = Math.max(0, cost - disc);
+        };
+        costInput.addEventListener('input', recalcPaid);
+        discInput.addEventListener('input', recalcPaid);
+    }
+});
+
+function hideDetailModal() {
+    document.getElementById('detail-booking-modal').classList.add('hidden');
+    activeAppointmentForDetails = null;
+}
+
+async function cancelAppointment() {
+    if (!activeAppointmentForDetails) return;
+    
+    const confirmCancel = confirm(`Are you sure you want to cancel the appointment for ${activeAppointmentForDetails.patient_name}?`);
+    if (!confirmCancel) return;
+
+    const token = getAuthToken();
+
+    try {
+        const response = await fetch(`${API_BASE}/api/appointments/${activeAppointmentForDetails.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Server returned non-JSON response. Backend may not be running.');
+            }
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to cancel appointment');
+        }
+
+        hideDetailModal();
+        loadDailyData();
+    } catch (err) {
+        console.error(err);
+        alert(err.message);
+    }
+}
+
+
+
+// --- FORGOT PASSWORD MODAL ---
+function initForgotModal() {
+    const modal = document.getElementById('forgot-password-modal');
+    const step1 = document.getElementById('forgot-step-1');
+    const step2 = document.getElementById('forgot-step-2');
+    const errorMsg = document.getElementById('forgot-error');
+    const successMsg = document.getElementById('forgot-success');
+    
+    const forgotSlugInput = document.getElementById('forgot-slug');
+    const forgotOtpInput = document.getElementById('forgot-otp');
+    const forgotNewPwdInput = document.getElementById('forgot-new-pwd');
+    
+    const btnForgot = document.getElementById('btn-forgot-pwd');
+    const btnClose = document.getElementById('btn-close-forgot-modal');
+    const btnRequestOtp = document.getElementById('btn-request-otp');
+    const btnSubmitReset = document.getElementById('btn-submit-reset');
+    
+    const reqSpinner = document.getElementById('otp-request-spinner');
+    const resetSpinner = document.getElementById('otp-reset-spinner');
+    
+    if (!modal || !btnForgot) return;
+
+    btnForgot.addEventListener('click', () => {
+        modal.classList.remove('hidden');
+        step1.classList.remove('hidden');
+        step2.classList.add('hidden');
+        errorMsg.classList.add('hidden');
+        successMsg.classList.add('hidden');
+        forgotSlugInput.value = clinicConfig?.slug || '';
+        forgotOtpInput.value = '';
+        forgotNewPwdInput.value = '';
+    });
+    
+    btnClose.addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+    
+    btnRequestOtp.addEventListener('click', async () => {
+        const slug = forgotSlugInput.value.trim();
+        if (!slug) {
+            errorMsg.textContent = 'Clinic ID is required';
+            errorMsg.classList.remove('hidden');
+            return;
+        }
+        
+        btnRequestOtp.disabled = true;
+        reqSpinner.classList.remove('hidden');
+        errorMsg.classList.add('hidden');
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slug })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
+            
+            successMsg.textContent = 'Reset OTP sent via WhatsApp successfully!';
+            successMsg.classList.remove('hidden');
+            setTimeout(() => {
+                successMsg.classList.add('hidden');
+                step1.classList.add('hidden');
+                step2.classList.remove('hidden');
+            }, 1200);
+        } catch (e) {
+            errorMsg.textContent = e.message;
+            errorMsg.classList.remove('hidden');
+        } finally {
+            btnRequestOtp.disabled = false;
+            reqSpinner.classList.add('hidden');
+        }
+    });
+    
+    btnSubmitReset.addEventListener('click', async () => {
+        const slug = forgotSlugInput.value.trim();
+        const otp = forgotOtpInput.value.trim();
+        const newPassword = forgotNewPwdInput.value.trim();
+        
+        if (!otp || !newPassword) {
+            errorMsg.textContent = 'All fields are required';
+            errorMsg.classList.remove('hidden');
+            return;
+        }
+        
+        btnSubmitReset.disabled = true;
+        resetSpinner.classList.remove('hidden');
+        errorMsg.classList.add('hidden');
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ slug, otp, newPassword })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Reset failed');
+            
+            successMsg.textContent = 'Password reset successfully! Opening login...';
+            successMsg.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 1800);
+        } catch (e) {
+            errorMsg.textContent = e.message;
+            errorMsg.classList.remove('hidden');
+        } finally {
+            btnSubmitReset.disabled = false;
+            resetSpinner.classList.add('hidden');
+        }
+    });
+}
+
+
+// --- COMPLETE VISIT MODAL ---
+function showCompleteModal(appt) {
+    activeAppointmentForComplete = appt;
+    document.getElementById('complete-modal-patient-name').textContent = appt.patient_name;
+    
+    // Estimate cost from config
+    let estimatedCost = 1000;
+    if (clinicConfig && clinicConfig.services) {
+        const found = clinicConfig.services.find(s => s.name === appt.service);
+        if (found) {
+            const parsed = parseInt(found.priceDisplay.replace(/[^0-9]/g, ''));
+            if (!isNaN(parsed)) estimatedCost = parsed;
+        }
+    }
+    
+    document.getElementById('complete-treatment-cost').value = estimatedCost;
+    document.getElementById('complete-discount').value = 0;
+    document.getElementById('complete-amount-paid').value = estimatedCost;
+    document.getElementById('complete-treatment').value = appt.service;
+    document.getElementById('complete-doctor-notes').value = '';
+    document.getElementById('complete-medicines').value = '';
+    document.getElementById('complete-follow-up-date').value = '';
+    document.getElementById('complete-follow-up-note').value = '';
+    document.getElementById('complete-modal-error').classList.add('hidden');
+    
+    const modal = document.getElementById('complete-visit-modal');
+    modal.classList.remove('hidden');
+    setTimeout(() => {
+        modal.firstElementChild.classList.remove('translate-y-full');
+    }, 10);
+}
+
+function hideCompleteModal() {
+    const modal = document.getElementById('complete-visit-modal');
+    if (!modal) return;
+    modal.firstElementChild.classList.add('translate-y-full');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+    }, 300);
+}
+
+async function submitCompleteVisit() {
+    if (!activeAppointmentForComplete) return;
+
+    const costInput = document.getElementById('complete-treatment-cost');
+    const discountInput = document.getElementById('complete-discount');
+    const paidInput = document.getElementById('complete-amount-paid');
+    const methodSelect = document.getElementById('complete-payment-method');
+    const treatmentInput = document.getElementById('complete-treatment');
+    const notesInput = document.getElementById('complete-doctor-notes');
+    const medicinesInput = document.getElementById('complete-medicines');
+    const followDateInput = document.getElementById('complete-follow-up-date');
+    const followNoteInput = document.getElementById('complete-follow-up-note');
+    const errorMsg = document.getElementById('complete-modal-error');
+    const spinner = document.getElementById('complete-spinner');
+    
+    const cost = costInput.value.trim();
+    const discount = discountInput.value.trim() || 0;
+    const paid = paidInput.value.trim();
+
+    if (!cost || !paid) {
+        errorMsg.classList.remove('hidden');
+        return;
+    }
+    
+    errorMsg.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    document.getElementById('complete-modal-submit-btn').disabled = true;
+
+    const token = getAuthToken();
+
+    try {
+        const response = await fetch(`${API_BASE}/api/appointments/${activeAppointmentForComplete.id}/complete`, {
+            method: 'PATCH',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                treatment_performed: treatmentInput.value.trim(),
+                doctor_notes: notesInput.value.trim(),
+                medicines_instructions: medicinesInput.value.trim(),
+                follow_up_date: followDateInput.value || null,
+                follow_up_note: followNoteInput.value.trim() || null,
+                treatment_cost: Number(cost),
+                discount: Number(discount),
+                amount_paid: Number(paid),
+                payment_method: methodSelect.value
+            })
+        });
+
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to complete visit');
+        }
+
+        hideCompleteModal();
+        showReviewRequestModal(activeAppointmentForComplete);
+        loadDailyData();
+    } catch (err) {
+        console.error(err);
+        alert(err.message);
+    } finally {
+        spinner.classList.add('hidden');
+        document.getElementById('complete-modal-submit-btn').disabled = false;
+    }
+}
+
+function showReviewRequestModal(appt) {
+    const modal = document.getElementById('review-request-modal');
+    modal.classList.remove('hidden');
+    
+    const skipBtn = document.getElementById('review-cancel-btn');
+    const sendBtn = document.getElementById('review-confirm-btn');
+    const spinner = document.getElementById('review-spinner');
+
+    const cleanSkip = () => {
+        modal.classList.add('hidden');
+        activeAppointmentForComplete = null;
+    };
+    
+    skipBtn.onclick = cleanSkip;
+    
+    sendBtn.onclick = async () => {
+        sendBtn.disabled = true;
+        spinner.classList.remove('hidden');
+        const token = getAuthToken();
+        try {
+            const res = await fetch(`${API_BASE}/api/appointments/${appt.id}/request-review`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) throw new Error('Failed to send review request');
+            alert('Review request template sent via WhatsApp successfully!');
+        } catch (e) {
+            alert(e.message);
+        } finally {
+            sendBtn.disabled = false;
+            spinner.classList.add('hidden');
+            cleanSkip();
+        }
+    };
+}
+
+// --- TABS CONTROLLER ---
+function initTabs() {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabName = btn.getAttribute('data-tab');
+            switchTab(tabName);
+        });
+    });
+}
+
+function switchTab(tabName) {
+    const tabBtns = document.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+        if (btn.getAttribute('data-tab') === tabName) {
+            btn.className = 'tab-btn px-4 py-2 rounded-theme text-sm font-bold bg-accent text-white transition-all duration-200';
+        } else {
+            btn.className = 'tab-btn px-4 py-2 rounded-theme text-sm font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all duration-200';
+        }
+    });
+
+    const panels = document.querySelectorAll('.tab-panel');
+    panels.forEach(p => p.classList.add('hidden'));
+    
+    const targetPanel = document.getElementById(`tab-${tabName}`);
+    if (targetPanel) targetPanel.classList.remove('hidden');
+
+    if (tabName === 'dashboard') {
+        loadDailyData();
+    } else if (tabName === 'history') {
+        loadHistoryData();
+    } else if (tabName === 'followups') {
+        loadFollowupsData();
+    } else if (tabName === 'leads') {
+        loadLeadsData();
+    } else if (tabName === 'reports') {
+        loadReportsData();
+    } else if (tabName === 'gallery') {
+        loadGalleryTab();
+    } else if (tabName === 'settings') {
+        loadSettingsTab();
+    }
+}
+
+// --- DASHBOARD STATISTICS ---
+async function loadDashboardStats() {
+    const today = document.getElementById('dashboard-date').value;
+    const token = getAuthToken();
+    try {
+        const res = await fetch(`${API_BASE}/api/reports/summary?start=${today}&end=${today}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load stats');
+        const data = await res.json();
+        
+        const statTodayVisits = document.getElementById('stat-today-visits');
+        const statNewPatients = document.getElementById('stat-new-patients');
+        const statReturningPatients = document.getElementById('stat-returning-patients');
+        const statTodayRevenue = document.getElementById('stat-today-revenue');
+        const statPendingBalance = document.getElementById('stat-pending-balance');
+        
+        if (statTodayVisits) statTodayVisits.textContent = data.appointments_count;
+        if (statNewPatients) statNewPatients.textContent = data.new_patients_count;
+        if (statReturningPatients) statReturningPatients.textContent = data.returning_patients_count;
+        if (statTodayRevenue) statTodayRevenue.textContent = `₹${data.revenue}`;
+        if (statPendingBalance) statPendingBalance.textContent = `₹${data.pending_payments}`;
+    } catch (e) {
+        console.error('Stats loading error:', e);
+        ['stat-today-visits','stat-new-patients','stat-returning-patients','stat-today-revenue','stat-pending-balance']
+            .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+    }
+}
+
+// --- GLOBAL SEARCH ---
+function initGlobalSearch() {
+    const input = document.getElementById('global-search-input');
+    const dropdown = document.getElementById('search-results-dropdown');
+    
+    if (!input || !dropdown) return;
+    
+    let debounceTimeout = null;
+    input.addEventListener('input', () => {
+        clearTimeout(debounceTimeout);
+        const q = input.value.trim();
+        if (q.length < 2) {
+            dropdown.classList.add('hidden');
+            return;
+        }
+        debounceTimeout = setTimeout(async () => {
+            const token = getAuthToken();
+            try {
+                const res = await fetch(`${API_BASE}/api/patients/search?q=${encodeURIComponent(q)}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Search failed');
+                const results = await res.json();
+                
+                dropdown.innerHTML = '';
+                if (results.length === 0) {
+                    dropdown.innerHTML = `<p class="text-xs text-slate-400 p-3 text-center">No patients found</p>`;
+                    dropdown.classList.remove('hidden');
+                    return;
+                }
+                
+                results.forEach(patient => {
+                    const div = document.createElement('div');
+                    div.className = 'p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 transition-theme';
+                    div.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-slate-800">${patient.patient_name}</span>
+                            ${patient.outstanding_balance > 0 ? `<span class="text-[9px] font-bold bg-rose-50 text-rose-500 px-1.5 py-0.5 rounded border border-rose-100">Due: ₹${patient.outstanding_balance}</span>` : ''}
+                        </div>
+                        <span class="text-[10px] text-slate-400 block">${patient.patient_phone} • ${patient.visits} visits</span>
+                    `;
+                    div.addEventListener('click', () => {
+                        dropdown.classList.add('hidden');
+                        input.value = '';
+                        showPatientProfile(patient.patient_phone);
+                    });
+                    dropdown.appendChild(div);
+                });
+                dropdown.classList.remove('hidden');
+            } catch (e) {
+                console.error(e);
+                dropdown.innerHTML = `<p class="text-xs text-red-400 p-3 text-center">Search unavailable. Contact support.</p>`;
+                dropdown.classList.remove('hidden');
+            }
+        }, 300);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+
+    // Close button for slideout drawer
+    document.getElementById('slideout-close').addEventListener('click', () => {
+        const slideout = document.getElementById('patient-slideout');
+        slideout.classList.add('translate-x-full');
+        setTimeout(() => slideout.classList.add('hidden'), 300);
+    });
+}
+
+// --- PATIENT PROFILE DRAWER & DOCUMENTS ---
+let currentActivePatientPhone = '';
+
+async function showPatientProfile(phone) {
+    currentActivePatientPhone = phone;
+    const token = getAuthToken();
+    
+    const slideout = document.getElementById('patient-slideout');
+    slideout.classList.remove('hidden');
+    setTimeout(() => {
+        slideout.classList.remove('translate-x-full');
+    }, 10);
+    
+    document.getElementById('slideout-patient-phone').textContent = phone;
+    document.getElementById('slideout-patient-name').textContent = 'Loading...';
+    document.getElementById('slideout-visits').textContent = '0';
+    document.getElementById('slideout-paid').textContent = '₹0';
+    document.getElementById('slideout-outstanding').textContent = '₹0';
+    document.getElementById('slideout-doc-list').innerHTML = '<p class="text-xs text-slate-400 p-2 col-span-full">Loading documents...</p>';
+    document.getElementById('slideout-history-list').innerHTML = '<p class="text-xs text-slate-400 p-2 col-span-full">Loading history...</p>';
+
+    try {
+        const searchRes = await fetch(`${API_BASE}/api/patients/search?q=${encodeURIComponent(phone)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!searchRes.ok) throw new Error('Failed to load patient detail');
+        const searchData = await searchRes.json();
+        
+        if (searchData.length > 0) {
+            const p = searchData[0];
+            document.getElementById('slideout-patient-name').textContent = p.patient_name;
+            document.getElementById('slideout-visits').textContent = p.visits;
+            document.getElementById('slideout-paid').textContent = `₹${p.total_paid || 0}`;
+            document.getElementById('slideout-outstanding').textContent = `₹${p.outstanding_balance || 0}`;
+        } else {
+            document.getElementById('slideout-patient-name').textContent = 'Unknown Patient';
+        }
+
+        const historyRes = await fetch(`${API_BASE}/api/appointments?phone=${encodeURIComponent(phone)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!historyRes.ok) throw new Error('Failed to load history');
+        const history = await historyRes.json();
+        
+        const histContainer = document.getElementById('slideout-history-list');
+        histContainer.innerHTML = '';
+        if (history.length === 0) {
+            histContainer.innerHTML = '<p class="text-xs text-slate-400 p-2">No history</p>';
+        } else {
+            history.forEach((appt, idx) => {
+                const card = renderAppointmentCard(appt, idx, { onRefresh: () => showPatientProfile(phone) });
+                histContainer.appendChild(card);
+            });
+        }
+
+        await loadPatientDocuments();
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function loadPatientDocuments() {
+    const token = getAuthToken();
+    const docContainer = document.getElementById('slideout-doc-list');
+    docContainer.innerHTML = '<p class="text-xs text-slate-400 p-2 col-span-full">Loading documents...</p>';
+    
+    try {
+        const docRes = await fetch(`${API_BASE}/api/documents?phone=${encodeURIComponent(currentActivePatientPhone)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!docRes.ok) throw new Error('Failed to load documents');
+        const docs = await docRes.json();
+        
+        docContainer.innerHTML = '';
+        if (docs.length === 0) {
+            docContainer.innerHTML = '<p class="text-xs text-slate-400 p-2 col-span-full">No documents uploaded</p>';
+            return;
+        }
+        
+        docs.forEach(doc => {
+            const div = document.createElement('div');
+            div.className = 'bg-white p-2 rounded border border-slate-100 flex items-center justify-between text-xs gap-2 shadow-sm';
+            
+            const isPdf = doc.file_type === 'pdf';
+            const icon = isPdf ? '<i class="fa-solid fa-file-pdf text-red-500 text-base"></i>' : '<i class="fa-solid fa-file-image text-blue-500 text-base"></i>';
+            
+            div.innerHTML = `
+                <div class="flex items-center gap-1.5 min-w-0">
+                    ${icon}
+                    <span class="truncate block font-semibold text-slate-700 max-w-[100px]" title="${doc.file_name}">${doc.file_name}</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <a href="${API_BASE}${doc.file_path}" target="_blank" class="h-6 w-6 rounded hover:bg-slate-50 flex items-center justify-center text-slate-400 hover:text-accent"><i class="fa-solid fa-arrow-down-open-across-boundary"></i></a>
+                    <button class="h-6 w-6 rounded hover:bg-rose-50 flex items-center justify-center text-slate-400 hover:text-rose-500 delete-doc-btn" data-id="${doc.id}"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+            `;
+            
+            div.querySelector('.delete-doc-btn').addEventListener('click', async (e) => {
+                const docId = e.currentTarget.getAttribute('data-id');
+                const confirmDel = confirm('Are you sure you want to delete this document?');
+                if (!confirmDel) return;
+                
+                try {
+                    const delRes = await fetch(`${API_BASE}/api/documents/${docId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!delRes.ok) throw new Error('Delete failed');
+                    await loadPatientDocuments();
+                } catch (err) {
+                    alert(err.message);
+                }
+            });
+
+            docContainer.appendChild(div);
+        });
+    } catch (e) {
+        console.error(e);
+        docContainer.innerHTML = '<p class="text-xs text-rose-500 p-2 col-span-full">Error loading documents</p>';
+    }
+}
+
+function setupDocumentUpload() {
+    const fileInput = document.getElementById('slideout-doc-file');
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const token = getAuthToken();
+        const formData = new FormData();
+        formData.append('patient_phone', currentActivePatientPhone);
+        formData.append('file', file);
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/documents`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to upload document');
+            }
+            alert('Document uploaded successfully!');
+            await loadPatientDocuments();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            fileInput.value = '';
+        }
+    });
+}
+
+// --- HISTORY TAB LOGIC ---
+let currentHistoryRange = 'today';
+
+function initHistoryTab() {
+    const chips = document.querySelectorAll('#history-chips button');
+    const customDiv = document.getElementById('history-custom-dates');
+    const startInput = document.getElementById('history-start-date');
+    const endInput = document.getElementById('history-end-date');
+    
+    if (!startInput || !endInput) return;
+    
+    const todayStr = getLocalDateString();
+    startInput.value = todayStr;
+    endInput.value = todayStr;
+
+    chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            chips.forEach(c => c.className = 'px-3 py-1.5 rounded-full text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50');
+            chip.className = 'px-3 py-1.5 rounded-full text-xs font-semibold border bg-accent/10 border-accent text-accent';
+            
+            const range = chip.getAttribute('data-range');
+            currentHistoryRange = range;
+            if (range === 'custom') {
+                customDiv.classList.remove('hidden');
+            } else {
+                customDiv.classList.add('hidden');
+                loadHistoryData();
+            }
+        });
+    });
+
+    startInput.addEventListener('change', loadHistoryData);
+    endInput.addEventListener('change', loadHistoryData);
+}
+
+async function loadHistoryData() {
+    const token = getAuthToken();
+    let start = '', end = '';
+    const today = new Date();
+    
+    if (currentHistoryRange === 'today') {
+        const todayStr = getLocalDateString(today);
+        start = todayStr;
+        end = todayStr;
+    } else if (currentHistoryRange === 'yesterday') {
+        const yest = new Date();
+        yest.setDate(today.getDate() - 1);
+        const yestStr = getLocalDateString(yest);
+        start = yestStr;
+        end = yestStr;
+    } else if (currentHistoryRange === 'last7') {
+        const last7 = new Date();
+        last7.setDate(today.getDate() - 7);
+        start = getLocalDateString(last7);
+        end = getLocalDateString(today);
+    } else if (currentHistoryRange === 'last30') {
+        const last30 = new Date();
+        last30.setDate(today.getDate() - 30);
+        start = getLocalDateString(last30);
+        end = getLocalDateString(today);
+    } else if (currentHistoryRange === 'custom') {
+        start = document.getElementById('history-start-date').value;
+        end = document.getElementById('history-end-date').value;
+    }
+
+    if (!start || !end) return;
+
+    const listDiv = document.getElementById('history-list');
+    listDiv.innerHTML = Array(3).fill('<div class="skeleton h-20"></div>').join('');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/appointments/history?start=${start}&end=${end}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch history');
+        
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Backend may not be running.');
+        }
+        
+        const data = await res.json();
+
+        listDiv.innerHTML = '';
+        if (data.length === 0) {
+            listDiv.innerHTML = `<p class="col-span-full text-center text-slate-400 py-8 text-sm"><i class="fa-regular fa-calendar-xmark mr-2"></i>No appointments found for the selected range.</p>`;
+            return;
+        }
+
+        data.forEach((appt, idx) => {
+            const card = renderAppointmentCard(appt, idx, { onRefresh: loadHistoryData });
+            listDiv.appendChild(card);
+        });
+    } catch (e) {
+        console.error(e);
+        listDiv.innerHTML = `<p class="col-span-full text-center text-rose-400 py-8 text-sm">Error loading history</p>`;
+    }
+}
+
+// --- FOLLOWUPS TAB LOGIC ---
+async function loadFollowupsData() {
+    const token = getAuthToken();
+    const listDiv = document.getElementById('followup-list');
+    listDiv.innerHTML = Array(3).fill('<div class="skeleton h-20"></div>').join('');
+    try {
+        const res = await fetch(`${API_BASE}/api/appointments/followups`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch followups');
+        
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response. Backend may not be running.');
+        }
+        
+        const data = await res.json();
+        listDiv.innerHTML = '';
+        if (data.length === 0) {
+            listDiv.innerHTML = `<p class="col-span-full text-center text-slate-400 py-8 text-sm"><i class="fa-solid fa-smile mr-2"></i>No pending follow-ups due.</p>`;
+            return;
+        }
+        data.forEach((appt, idx) => {
+            const card = renderAppointmentCard(appt, idx, { isFollowupView: true, onRefresh: loadFollowupsData });
+            listDiv.appendChild(card);
+        });
+    } catch (e) {
+        console.error(e);
+        listDiv.innerHTML = `<p class="col-span-full text-center text-rose-400 py-8 text-sm">Error loading followups</p>`;
+    }
+}
+
+// --- LEADS TAB LOGIC ---
+function initManualLeadModal() {
+    const btn = document.getElementById('btn-add-lead-manual');
+    const modal = document.getElementById('manual-lead-modal');
+    const close = document.getElementById('lead-modal-close');
+    const cancel = document.getElementById('lead-modal-cancel');
+    const submit = document.getElementById('lead-modal-submit');
+    const select = document.getElementById('lead-service');
+    const customContainer = document.getElementById('lead-custom-service-container');
+    const customInput = document.getElementById('lead-custom-service');
+    const services = Array.isArray(clinicConfig.services) ? clinicConfig.services : [];
+
+    if (!btn || !modal) return;
+
+    btn.addEventListener('click', () => {
+        // Prepopulate select
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select a service';
+        select.appendChild(placeholder);
+        services.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.name;
+            opt.textContent = s.name;
+            select.appendChild(opt);
+        });
+        const otherOpt = document.createElement('option');
+        otherOpt.value = '__custom__';
+        otherOpt.textContent = 'Other / Not Listed';
+        select.appendChild(otherOpt);
+        if (customInput) customInput.value = '';
+        customContainer?.classList.add('hidden');
+        select.value = '';
+        
+        document.getElementById('lead-name').value = '';
+        document.getElementById('lead-phone').value = '';
+        document.getElementById('lead-notes').value = '';
+        modal.classList.remove('hidden');
+    });
+
+    const hide = () => modal.classList.add('hidden');
+    close.addEventListener('click', hide);
+    cancel.addEventListener('click', hide);
+
+    select?.addEventListener('change', () => {
+        if (select.value === '__custom__') {
+            customContainer?.classList.remove('hidden');
+        } else {
+            customContainer?.classList.add('hidden');
+        }
+    });
+
+    submit.addEventListener('click', async () => {
+        const name = document.getElementById('lead-name').value.trim();
+        const phone = document.getElementById('lead-phone').value.trim();
+        let service = select.value;
+        const notes = document.getElementById('lead-notes').value.trim();
+
+        if (select.value === '__custom__') {
+            service = customInput?.value.trim();
+        }
+        
+        if (!name || phone.length !== 10 || isNaN(phone)) {
+            alert('Please enter valid lead name and 10-digit phone number');
+            return;
+        }
+
+        if (!service) {
+            alert('Please select or enter a service');
+            return;
+        }
+
+        const slug = getClinicSlug();
+        try {
+            const response = await fetch(`${API_BASE}/api/leads`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${getAuthToken()}`
+                },
+                body: JSON.stringify({
+                    clinic_username: slug,
+                    name,
+                    phone,
+                    interested_service: service,
+                    notes
+                })
+            });
+            if (!response.ok) throw new Error('Failed to create lead');
+            hide();
+            loadLeadsData();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+}
+
+async function loadLeadsData() {
+    const token = getAuthToken();
+    const cols = {
+        'new': document.getElementById('lead-col-new'),
+        'contacted': document.getElementById('lead-col-contacted'),
+        'converted': document.getElementById('lead-col-converted'),
+        'lost': document.getElementById('lead-col-lost')
+    };
+
+    Object.values(cols).forEach(c => c.innerHTML = '<div class="skeleton h-24"></div>');
+
+    try {
+        const res = await fetch(`${API_BASE}/api/leads`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch leads');
+        const leads = await res.json();
+
+        const counts = { 'new': 0, 'contacted': 0, 'converted': 0, 'lost': 0 };
+        Object.values(cols).forEach(c => c.innerHTML = '');
+
+        leads.forEach(lead => {
+            const status = lead.status.toLowerCase();
+            if (cols[status]) {
+                counts[status]++;
+                const card = document.createElement('div');
+                card.className = 'bg-white p-4 rounded-theme border border-slate-100 shadow-sm space-y-3';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-800 text-sm">${lead.name}</span>
+                        <a href="tel:${lead.phone}" class="text-xs text-accent hover:underline"><i class="fa-solid fa-phone"></i> Call</a>
+                    </div>
+                    <div class="space-y-1 text-xs text-slate-500">
+                        <p><strong>Service:</strong> ${lead.interested_service || 'N/A'}</p>
+                        ${lead.notes ? `<p class="italic bg-slate-50 p-1.5 rounded">"${lead.notes}"</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5 pt-2 border-t border-slate-50">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">Status:</span>
+                        <select class="lead-status-select bg-slate-50 border border-slate-100 rounded text-xs p-1 text-slate-600 outline-none" data-id="${lead.id}">
+                            <option value="new" ${lead.status === 'new' ? 'selected' : ''}>New</option>
+                            <option value="contacted" ${lead.status === 'contacted' ? 'selected' : ''}>Contacted</option>
+                            <option value="converted" ${lead.status === 'converted' ? 'selected' : ''}>Converted</option>
+                            <option value="lost" ${lead.status === 'lost' ? 'selected' : ''}>Lost</option>
+                        </select>
+                    </div>
+                `;
+                
+                card.querySelector('.lead-status-select').addEventListener('change', async (e) => {
+                    const nextStatus = e.target.value;
+                    try {
+                        const patchRes = await fetch(`${API_BASE}/api/leads/${lead.id}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${token}`
+                            },
+                            body: JSON.stringify({ status: nextStatus, notes: lead.notes })
+                        });
+                        if (!patchRes.ok) throw new Error('Failed to update status');
+                        loadLeadsData();
+                    } catch (err) {
+                        alert(err.message);
+                    }
+                });
+
+                cols[status].appendChild(card);
+            }
+        });
+
+        document.getElementById('count-lead-new').textContent = counts['new'];
+        document.getElementById('count-lead-contacted').textContent = counts['contacted'];
+        document.getElementById('count-lead-converted').textContent = counts['converted'];
+        document.getElementById('count-lead-lost').textContent = counts['lost'];
+
+        Object.entries(cols).forEach(([key, col]) => {
+            if (col.children.length === 0) {
+                col.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No leads</p>`;
+            }
+        });
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+// --- REPORTS TAB LOGIC ---
+let serviceRevenueChart = null;
+let peakHoursChart = null;
+
+function initReportsTab() {
+    // Reports tab HTML is added in a later build — skip safely if not present
+    const startEl = document.getElementById('report-start-date');
+    const endEl   = document.getElementById('report-end-date');
+    const btnEl   = document.getElementById('btn-update-reports');
+    if (!startEl || !endEl || !btnEl) return;
+
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+
+    startEl.value = `${year}-${month}-01`;
+    endEl.value   = getLocalDateString(today);
+
+    btnEl.addEventListener('click', loadReportsData);
+}
+
+async function loadReportsData() {
+    const start = document.getElementById('report-start-date').value;
+    const end = document.getElementById('report-end-date').value;
+    const token = getAuthToken();
+    
+    if (!start || !end) return;
+
+    try {
+        const res = await fetch(`${API_BASE}/api/reports/summary?start=${start}&end=${end}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to fetch reports');
+        const data = await res.json();
+
+        renderServiceRevenueChart(data.service_revenue);
+        renderPeakHoursChart(data.peak_hours);
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function renderServiceRevenueChart(serviceRevenue) {
+    const ctx = document.getElementById('chart-service-revenue').getContext('2d');
+    if (serviceRevenueChart) serviceRevenueChart.destroy();
+
+    const labels = serviceRevenue.map(item => item.service);
+    const datasetData = serviceRevenue.map(item => parseFloat(item.revenue) || 0);
+
+    serviceRevenueChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Revenue (₹)',
+                data: datasetData,
+                backgroundColor: 'rgba(45, 212, 191, 0.65)',
+                borderColor: 'rgb(45, 212, 191)',
+                borderWidth: 1.5,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderPeakHoursChart(peakHours) {
+    const ctx = document.getElementById('chart-peak-hours').getContext('2d');
+    if (peakHoursChart) peakHoursChart.destroy();
+
+    const labels = peakHours.map(item => `${item.hour}:00`);
+    const datasetData = peakHours.map(item => item.count);
+
+    peakHoursChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Bookings Count',
+                data: datasetData,
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                borderColor: 'rgb(99, 102, 241)',
+                borderWidth: 2.5,
+                tension: 0.35,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            },
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+// --- WALK-IN PATIENT QUICK ADD ---
+function initWalkinModal() {
+    const floatBtn = document.getElementById('btn-walkin-float');
+    const modal = document.getElementById('walkin-booking-modal');
+    const close = document.getElementById('walkin-modal-close');
+    const cancel = document.getElementById('walkin-modal-cancel-btn');
+    const submit = document.getElementById('walkin-modal-submit-btn');
+    
+    const dropdownBtn = document.getElementById('walkin-service-dropdown-btn');
+    const dropdownMenu = document.getElementById('walkin-service-dropdown-menu');
+    const dropdownChevron = document.getElementById('walkin-service-chevron');
+    const selectedInput = document.getElementById('walkin-service-selected');
+    const labelSpan = document.getElementById('walkin-service-label');
+    
+    const customContainer = document.getElementById('walkin-custom-service-container');
+    const customInput = document.getElementById('walkin-custom-service');
+
+    if (!floatBtn || !modal) return;
+
+    // Toggle dropdown
+    if (dropdownBtn && dropdownMenu && dropdownChevron) {
+        dropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isHidden = dropdownMenu.classList.contains('hidden');
+            if (isHidden) {
+                dropdownMenu.classList.remove('hidden');
+                dropdownChevron.style.transform = 'rotate(180deg)';
+                // scroll into view so options list stays fully visible on mobile
+                setTimeout(() => {
+                    dropdownBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 50);
+            } else {
+                dropdownMenu.classList.add('hidden');
+                dropdownChevron.style.transform = 'rotate(0deg)';
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!dropdownBtn.contains(e.target) && !dropdownMenu.contains(e.target)) {
+                dropdownMenu.classList.add('hidden');
+                dropdownChevron.style.transform = 'rotate(0deg)';
+            }
+        });
+    }
+
+    const selectServiceOption = (val, labelText, isCustom) => {
+        selectedInput.value = val;
+        labelSpan.innerHTML = `<span class="font-bold text-slate-800">${labelText}</span>`;
+        dropdownMenu.classList.add('hidden');
+        if (dropdownChevron) dropdownChevron.style.transform = 'rotate(0deg)';
+
+        if (isCustom) {
+            customContainer.classList.remove('hidden');
+        } else {
+            customContainer.classList.add('hidden');
+        }
+    };
+
+    floatBtn.addEventListener('click', () => {
+        // Prepopulate dynamic options inside custom dropdown
+        dropdownMenu.innerHTML = '';
+        
+        // Add "Other / Custom" option at the top
+        const otherItem = document.createElement('button');
+        otherItem.type = 'button';
+        otherItem.className = 'w-full text-left px-3 py-2 rounded-theme text-sm flex items-center justify-between hover:bg-slate-50 transition-colors group border-b border-slate-100 mb-1 pb-2';
+        otherItem.innerHTML = `
+            <span class="font-bold text-slate-500 group-hover:text-amber-600"><i class="fa-solid fa-pen-to-square mr-1.5 text-xs"></i>Other / Not Listed</span>
+            <span class="text-[10px] uppercase font-semibold text-slate-400">Custom</span>
+        `;
+        otherItem.addEventListener('click', () => {
+            selectServiceOption('__custom__', 'Other / Not Listed', true);
+        });
+        dropdownMenu.appendChild(otherItem);
+
+        if (clinicConfig && clinicConfig.services && clinicConfig.services.length > 0) {
+            clinicConfig.services.forEach((s, idx) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'w-full text-left px-3 py-2 rounded-theme text-sm flex items-center justify-between hover:bg-slate-50 transition-colors group';
+                item.innerHTML = `
+                    <span class="font-bold text-slate-700 group-hover:text-accent">${s.name}</span>
+                `;
+                item.addEventListener('click', () => {
+                    selectServiceOption(s.name, s.name, false);
+                });
+                dropdownMenu.appendChild(item);
+
+                // Auto select first option on load
+                if (idx === 0) {
+                    selectServiceOption(s.name, s.name, false);
+                }
+            });
+        }
+        
+        document.getElementById('walkin-patient-name').value = '';
+        document.getElementById('walkin-patient-phone').value = '';
+        customInput.value = '';
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            modal.firstElementChild.classList.remove('translate-y-full');
+        }, 10);
+    });
+
+    const hide = () => {
+        modal.firstElementChild.classList.add('translate-y-full');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+        }, 300);
+    };
+    close.addEventListener('click', hide);
+    cancel.addEventListener('click', hide);
+
+    submit.addEventListener('click', async () => {
+        const name = document.getElementById('walkin-patient-name').value.trim();
+        const phone = document.getElementById('walkin-patient-phone').value.trim();
+        let service = selectedInput.value;
+        const token = getAuthToken();
+
+        if (selectedInput.value === '__custom__') {
+            service = customInput.value.trim();
+            if (!service) {
+                alert('Please enter a custom service name');
+                return;
+            }
+        }
+
+        if (!name || phone.length !== 10 || isNaN(phone)) {
+            alert('Please enter valid patient name and 10-digit phone number');
+            return;
+        }
+
+        if (!service) {
+            alert('Please select or enter a service');
+            return;
+        }
+
+        const now = new Date();
+        const dateStr = getLocalDateString(now);
+        let hh = now.getHours();
+        let mm = Math.round(now.getMinutes() / 5) * 5;
+        if (mm >= 60) {
+            mm = 0;
+            hh = (hh + 1) % 24;
+        }
+        const hours = String(hh).padStart(2, '0');
+        const minutes = String(mm).padStart(2, '0');
+        const slot = `${hours}:${minutes}`;
+
+        try {
+            const response = await fetch(`${API_BASE}/api/appointments/admin`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` 
+                },
+                body: JSON.stringify({
+                    patient_name: name,
+                    patient_phone: phone,
+                    service: service,
+                    date: dateStr,
+                    time_slot: slot,
+                    source: 'walkin'
+                })
+            });
+
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to submit appointment');
+            }
+
+            hide();
+            loadDailyData();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+}
+
+
+// =============================================
+// GALLERY TAB LOGIC
+// =============================================
+async function loadGalleryTab() {
+    const token = getAuthToken();
+    const grid = document.getElementById('admin-gallery-grid');
+    if (!grid) return;
+    const clinicSlug = getClinicSlug();
+    if (!clinicSlug) {
+        grid.innerHTML = '<p class="col-span-full text-xs text-slate-400 text-center py-6">Clinic config not loaded</p>';
+        return;
+    }
+    grid.innerHTML = Array(4).fill('<div class="skeleton h-32"></div>').join('');
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/gallery?clinic_username=${clinicSlug}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Failed to load gallery');
+        const items = await res.json();
+        
+        grid.innerHTML = '';
+        if (items.length === 0) {
+            grid.innerHTML = '<p class="col-span-full text-xs text-slate-400 text-center py-6">No gallery images uploaded yet</p>';
+            return;
+        }
+
+        const singles = items.filter(item => item.type !== 'before-after' && item.type !== 'before_after');
+        const pairs = items.filter(item => item.type === 'before-after' || item.type === 'before_after');
+
+        const renderSingleSection = (title, sectionItems) => {
+            if (!sectionItems.length) return '';
+            return `
+                <section class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-800 text-sm">${title}</h4>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${sectionItems.length}</span>
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        ${sectionItems.map(item => `
+                            <div class="relative rounded-theme overflow-hidden shadow-sm border border-slate-100 group">
+                                <img src="${assetUrl(item.image_url || item.before_url || item.after_url || '')}" alt="${item.caption || 'Gallery'}" class="w-full h-32 object-cover">
+                                <button data-gallery-delete-id="${item.id}" class="absolute top-2 right-2 h-7 w-7 rounded-full bg-rose-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            `;
+        };
+
+        const renderPairSection = (title, sectionItems) => {
+            if (!sectionItems.length) return '';
+            return `
+                <section class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-800 text-sm">${title}</h4>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${sectionItems.length}</span>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        ${sectionItems.map(item => `
+                            <div class="relative rounded-theme overflow-hidden shadow-sm border border-slate-100 group">
+                                <div class="grid grid-cols-2 h-32">
+                                    <img src="${assetUrl(item.before_url || item.image_url || '')}" alt="${item.caption || 'Before'} before" class="w-full h-full object-cover">
+                                    <img src="${assetUrl(item.after_url || item.image_url || '')}" alt="${item.caption || 'After'} after" class="w-full h-full object-cover border-l border-white">
+                                </div>
+                                <span class="absolute bottom-2 left-2 glass text-[9px] font-bold text-slate-900 px-2 py-0.5 rounded-full">B/A</span>
+                                <button data-gallery-delete-id="${item.id}" class="absolute top-2 right-2 h-7 w-7 rounded-full bg-rose-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center shadow">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </section>
+            `;
+        };
+
+        grid.className = 'space-y-6';
+        grid.innerHTML = `
+            ${renderSingleSection('Single Photos', singles)}
+            ${renderPairSection('Before / After Pairs', pairs)}
+        `;
+
+        grid.querySelectorAll('[data-gallery-delete-id]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const itemId = btn.dataset.galleryDeleteId;
+                if (!confirm('Delete this image?')) return;
+                try {
+                    const delRes = await fetch(`${API_BASE}/api/gallery/${itemId}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (!delRes.ok) throw new Error('Delete failed');
+                    await loadGalleryTab();
+                } catch (e) { alert(e.message); }
+            });
+        });
+    } catch (e) {
+        console.error(e);
+        grid.innerHTML = '<p class="col-span-full text-xs text-rose-500 text-center py-6">Error loading gallery</p>';
+    }
+}
+
+function setupGalleryUpload() {
+    const fileInput = document.getElementById('gallery-file-input');
+    const beforeInput = document.getElementById('gallery-before-input');
+    const afterInput = document.getElementById('gallery-after-input');
+    const baLabel = document.getElementById('gallery-ba-label');
+    const btnBA = document.getElementById('btn-upload-before-after');
+    const status = document.getElementById('gallery-upload-status');
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('type', 'single');
+            try {
+                status.textContent = 'Uploading...';
+                status.className = 'text-xs font-semibold text-center text-slate-500';
+                status.classList.remove('hidden');
+                const res = await fetch(`${API_BASE}/api/gallery`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+                    body: formData
+                });
+                if (!res.ok) throw new Error('Upload failed');
+                status.textContent = 'Uploaded!';
+                status.className = 'text-xs font-semibold text-center text-emerald-600';
+                setTimeout(() => status.classList.add('hidden'), 2000);
+                await loadGalleryTab();
+            } catch (e) { status.textContent = e.message; status.className = 'text-xs font-semibold text-center text-rose-500'; status.classList.remove('hidden'); }
+            fileInput.value = '';
+        });
+    }
+    
+    if (btnBA && beforeInput && afterInput) {
+        btnBA.addEventListener('click', async () => {
+            const beforeFile = beforeInput.files[0];
+            const afterFile = afterInput.files[0];
+            if (!beforeFile || !afterFile) { alert('Please select both before and after images'); return; }
+            const formData = new FormData();
+            formData.append('before_image', beforeFile);
+            formData.append('after_image', afterFile);
+            formData.append('label', baLabel.value || 'Before/After');
+            try {
+                status.textContent = 'Uploading pair...';
+                status.className = 'text-xs font-semibold text-center text-slate-500';
+                status.classList.remove('hidden');
+                const res = await fetch(`${API_BASE}/api/gallery/before-after`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+                    body: formData
+                });
+                if (!res.ok) throw new Error('Upload failed');
+                status.textContent = 'Uploaded!';
+                status.className = 'text-xs font-semibold text-center text-emerald-600';
+                setTimeout(() => status.classList.add('hidden'), 2000);
+                beforeInput.value = ''; afterInput.value = ''; baLabel.value = '';
+                await loadGalleryTab();
+            } catch (e) { status.textContent = e.message; status.className = 'text-xs font-semibold text-center text-rose-500'; status.classList.remove('hidden'); }
+        });
+    }
+}
+
+// =============================================
+// SETTINGS TAB LOGIC
+// =============================================
+function loadSettingsTab() {
+    const token = getAuthToken();
+    document.getElementById('settings-clinic-name').value = clinicConfig.name || '';
+    document.getElementById('settings-contact-phone').value = clinicConfig.contact_phone || '';
+    document.getElementById('settings-admin-email').value = clinicConfig.admin_email || '';
+    document.getElementById('settings-address').value = clinicConfig.contact_address || '';
+    document.getElementById('settings-map-embed').value = clinicConfig.contact?.mapEmbedUrl || clinicConfig.contact_map_url || '';
+    const whatsappNumber = clinicConfig.whatsapp?.clinicNumber || clinicConfig.whatsapp_number || '';
+    document.getElementById('settings-whatsapp').value = whatsappNumber;
+    document.getElementById('settings-google-review').value = clinicConfig.google_review_link || '';
+    
+    // Hide WhatsApp templates card if no clinic number is configured
+    const templatesCard = document.getElementById('whatsapp-templates-card');
+    if (templatesCard) {
+        templatesCard.style.display = whatsappNumber ? '' : 'none';
+    }
+    
+    const vis = clinicConfig.visibility_settings || {};
+    renderVisibilityToggles(vis);
+    
+    const whatsappFeatures = clinicConfig.whatsapp?.features || clinicConfig.whatsapp_features || {};
+    renderWhatsappTemplates(whatsappFeatures);
+    
+    renderReviewsManager(clinicConfig.reviews || []);
+
+    // Super admin gating based on logged-in user
+    const superSections = document.querySelectorAll('[data-super-only]');
+    const showSuper = sessionStorage.getItem('is_super_admin') === 'true';
+    superSections.forEach(el => {
+        el.style.display = showSuper ? '' : 'none';
+    });
+}
+
+function renderVisibilityToggles(vis) {
+    const container = document.getElementById('visibility-toggles');
+    if (!container) return;
+    const toggles = [
+        { key: 'show_stats_bar', label: 'Stats Bar (Hero Numbers)' },
+        { key: 'show_ratings', label: 'Star Ratings' },
+        { key: 'show_doctor_section', label: 'Doctor Section' },
+        { key: 'show_gallery', label: 'Gallery Section' },
+        { key: 'show_pricing', label: 'Pricing Display' },
+        { key: 'show_lead_form', label: 'Lead / Callback Form' },
+        { key: 'show_google_review_btn', label: 'Google Review Button' },
+        { key: 'show_whatsapp_fab', label: 'WhatsApp Float Button' },
+        { key: 'show_working_hours', label: 'Working Hours Table' }
+    ];
+    container.innerHTML = toggles.map(t => `
+        <label class="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-700">
+            <input type="checkbox" data-vis-key="${t.key}" ${vis[t.key] !== false ? 'checked' : ''} class="rounded text-accent focus:ring-accent accent-accent">
+            ${t.label}
+        </label>
+    `).join('');
+}
+
+let currentEditingTemplateKey = null;
+
+function openWhatsappTemplateModal(key, label, desc, customText) {
+    currentEditingTemplateKey = key;
+    document.getElementById('whatsapp-template-modal-title').textContent = `Edit: ${label}`;
+    document.getElementById('whatsapp-template-modal-desc').textContent = desc;
+    document.getElementById('whatsapp-template-modal-textarea').value = customText || '';
+    document.getElementById('whatsapp-template-modal-status').classList.add('hidden');
+    document.getElementById('whatsapp-template-modal').classList.remove('hidden');
+}
+
+function closeWhatsappTemplateModal() {
+    currentEditingTemplateKey = null;
+    document.getElementById('whatsapp-template-modal').classList.add('hidden');
+}
+
+async function saveWhatsappTemplateText() {
+    if (!currentEditingTemplateKey) return;
+    const token = getAuthToken();
+    const status = document.getElementById('whatsapp-template-modal-status');
+    const newText = document.getElementById('whatsapp-template-modal-textarea').value.trim();
+
+    const currentFeature = (clinicConfig.whatsapp?.features || clinicConfig.whatsapp_features || {})[currentEditingTemplateKey] || {};
+    const payload = {
+        whatsapp: {
+            features: {
+                [currentEditingTemplateKey]: { enabled: currentFeature.enabled, custom_text: newText || null }
+            }
+        }
+    };
+
+    try {
+        status.textContent = 'Saving...';
+        status.className = 'text-xs font-semibold text-center text-slate-500';
+        status.classList.remove('hidden');
+
+        const res = await fetch(`${API_BASE}/api/clinics/settings`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Save failed');
+
+        sessionStorage.removeItem('_cc');
+        clinicConfig = await resolveClinicConfig();
+        window.clinicConfig = clinicConfig;
+        renderWhatsappTemplates(clinicConfig.whatsapp?.features || clinicConfig.whatsapp_features || {});
+
+        status.textContent = 'Saved!';
+        status.className = 'text-xs font-semibold text-center text-emerald-600';
+        setTimeout(closeWhatsappTemplateModal, 1000);
+    } catch (e) {
+        status.textContent = e.message;
+        status.className = 'text-xs font-semibold text-center text-rose-500';
+    }
+}
+
+const WHATSAPP_TEMPLATE_LABELS = {
+  booking_confirmation_patient: { label: 'Booking Confirmation', desc: 'Sent to patient after booking' },
+  booking_alert_owner: { label: 'New Booking Alert', desc: 'Sent to clinic owner' },
+  booking_reminder_24h: { label: '24h Appointment Reminder', desc: 'Sent to patient day before visit' },
+  booking_review_request: { label: 'Review Request', desc: 'Asks patient for Google review' },
+  payment_receipt: { label: 'Payment Receipt', desc: 'Sent after payment recorded' },
+  birthday_greeting: { label: 'Birthday Greeting', desc: 'Annual greeting to patients' }
+};
+
+function renderWhatsappTemplates(features) {
+  const container = document.getElementById('whatsapp-templates-list');
+  if (!container) return;
+  container.innerHTML = Object.entries(WHATSAPP_TEMPLATE_LABELS).map(([key, meta]) => {
+    const f = features?.[key] || { enabled: false, locked: true };
+    if (f.locked) {
+      return `<div class="flex items-center justify-between p-3 bg-slate-50 rounded-theme opacity-60">
+        <div><p class="text-sm font-semibold text-slate-500">${meta.label}</p><p class="text-xs text-slate-400">${meta.desc}</p></div>
+        <button class="text-xs font-bold text-accent border border-accent/30 px-3 py-1.5 rounded-theme" data-request-feature="${key}">Ask to Enable</button>
+      </div>`;
+    }
+    return `<div class="flex items-center justify-between p-3 border border-slate-100 rounded-theme">
+      <div><p class="text-sm font-semibold text-slate-800">${meta.label}</p><p class="text-xs text-slate-400">${meta.desc}</p></div>
+      <div class="flex items-center gap-3">
+        <button data-edit-whatsapp-template="${key}" data-template-label="${meta.label}" data-template-desc="${meta.desc}" data-custom-text="${(f.custom_text || '').replace(/"/g, '"')}" class="text-xs font-bold text-slate-400 hover:text-accent transition-theme">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        <label class="toggle-label toggle-positive">
+          <input type="checkbox" data-whatsapp-toggle="${key}" ${f.enabled ? 'checked' : ''}>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+      </div>
+    </div>`;
+  }).join('');
+  
+  // Attach event listeners to "Ask to Enable" buttons
+  container.querySelectorAll('[data-request-feature]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const featureKey = btn.dataset.requestFeature;
+      const featureLabel = WHATSAPP_TEMPLATE_LABELS[featureKey]?.label || featureKey;
+      const message = `I would like to enable the "${featureLabel}" WhatsApp feature for my clinic.`;
+      window.open(`mailto:support@yourplatform.com?subject=Feature Request: ${featureKey}&body=${encodeURIComponent(message)}`, '_blank');
+    });
+  });
+}
+
+function renderReviewsManager(reviews) {
+    const container = document.getElementById('reviews-manager');
+    if (!container) return;
+    container.innerHTML = `
+        <div id="reviews-list">
+            ${reviews.map((r, i) => `
+                <div class="review-entry border border-slate-200 rounded-xl p-4 space-y-2">
+                    <div class="flex gap-2">
+                        <input class="review-name flex-1 border border-slate-200 rounded-lg p-2 text-sm" placeholder="Patient Name" value="${r.name || ''}">
+                        <select class="review-rating border border-slate-200 rounded-lg p-2 text-sm">
+                            ${[5,4,3,2,1].map(n => `<option value="${n}" ${(r.rating||5)==n?'selected':''}>${n} ★</option>`).join('')}
+                        </select>
+                        <button onclick="this.closest('.review-entry').remove()" class="text-rose-400 hover:text-rose-600 text-lg px-2">×</button>
+                    </div>
+                    <textarea class="review-text w-full border border-slate-200 rounded-lg p-2 text-sm" rows="2" placeholder="Review text">${r.text || ''}</textarea>
+                </div>
+            `).join('')}
+        </div>
+        <button onclick="addReviewEntry()" class="w-full border-2 border-dashed border-slate-200 rounded-xl p-3 text-sm text-slate-500 hover:border-accent hover:text-accent transition-colors">+ Add Review</button>
+    `;
+}
+
+function addReviewEntry() {
+    const list = document.getElementById('reviews-list');
+    const container = list || document.getElementById('reviews-manager');
+    const div = document.createElement('div');
+    div.className = 'review-entry border border-slate-200 rounded-xl p-4 space-y-2';
+    div.innerHTML = `
+        <div class="flex gap-2">
+            <input class="review-name flex-1 border border-slate-200 rounded-lg p-2 text-sm" placeholder="Patient Name" value="">
+            <select class="review-rating border border-slate-200 rounded-lg p-2 text-sm">
+                ${[5,4,3,2,1].map(n => `<option value="${n}" ${n==5?'selected':''}>${n} ★</option>`).join('')}
+            </select>
+            <button onclick="this.closest('.review-entry').remove()" class="text-rose-400 hover:text-rose-600 text-lg px-2">×</button>
+        </div>
+        <textarea class="review-text w-full border border-slate-200 rounded-lg p-2 text-sm" rows="2" placeholder="Review text"></textarea>
+    `;
+    container.appendChild(div);
+}
+
+async function saveSettings() {
+    const token = getAuthToken();
+    const status = document.getElementById('settings-status');
+    const vis = {};
+    document.querySelectorAll('#visibility-toggles input[type=checkbox]').forEach(cb => {
+        vis[cb.dataset.visKey] = cb.checked;
+    });
+
+    const whatsapp_features = {};
+    document.querySelectorAll('[data-whatsapp-toggle]').forEach(el => {
+        whatsapp_features[el.dataset.whatsappToggle] = { enabled: el.checked };
+    });
+
+    try {
+        status.textContent = 'Saving...';
+        status.className = 'text-xs font-semibold text-center text-slate-500';
+        status.classList.remove('hidden');
+    const res = await fetch(`${API_BASE}/api/clinics/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+            name: document.getElementById('settings-clinic-name').value,
+            contact_phone: document.getElementById('settings-contact-phone').value,
+            contact_address: document.getElementById('settings-address').value,
+            admin_email: document.getElementById('settings-admin-email').value,
+            map_embed_url: document.getElementById('settings-map-embed').value,
+            Google_review_link: document.getElementById('settings-google-review').value,
+            visibility_settings: vis,
+            whatsapp: {
+                clinicNumber: document.getElementById('settings-whatsapp').value,
+                confirmation_enabled: true,
+                features: whatsapp_features
+            },
+            reviews: [...document.querySelectorAll('.review-entry')].map(el => ({
+                name: el.querySelector('.review-name').value.trim(),
+                rating: parseInt(el.querySelector('.review-rating').value),
+                text: el.querySelector('.review-text').value.trim()
+            })).filter(r => r.name && r.text)
+        })
+    });
+        if (!res.ok) throw new Error('Save failed');
+        sessionStorage.removeItem('_cc');
+
+        // Re-resolve so this tab's in-memory state matches what was just saved,
+        // instead of only fixing the *next* page load.
+        clinicConfig = await resolveClinicConfig();
+        window.clinicConfig = clinicConfig;
+        loadSettingsTab();
+
+        status.textContent = 'Settings saved!';
+        status.className = 'text-xs font-semibold text-center text-emerald-600';
+        setTimeout(() => status.classList.add('hidden'), 3000);
+    } catch (e) {
+        status.textContent = 'Error: ' + e.message;
+        status.className = 'text-xs font-semibold text-center text-rose-500';
+    }
+}
+
+// ============================================================
+// SUPER ADMIN CLINIC CONFIG EDITOR
+// Pattern: all new per-clinic fields go in config JSON.
+// Add field to HTML + read/write it in cfgCollect<Section>().
+// Never touch this wiring for new fields — only cfgCollect fns.
+// ============================================================
+
+let _cfgData = null; // raw full clinic data from get_clinic_full
+let _cfgClinicId = null;
+
+function _superPwd() { return sessionStorage.getItem('super_admin_pwd') || ''; }
+
+async function initClinicConfigTab() {
+    if (sessionStorage.getItem('is_super_admin') !== 'true') return;
+
+    // Sub-tab switching
+    document.querySelectorAll('.cfg-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.cfg-tab-btn').forEach(b => {
+                b.className = 'cfg-tab-btn px-3 py-1.5 rounded-theme text-xs font-semibold text-slate-600 hover:bg-slate-100 whitespace-nowrap';
+            });
+            btn.className = 'cfg-tab-btn px-3 py-1.5 rounded-theme text-xs font-bold bg-accent text-white whitespace-nowrap';
+            document.querySelectorAll('.cfg-panel').forEach(p => p.classList.add('hidden'));
+            document.getElementById(`cfg-tab-${btn.dataset.cfgTab}`)?.classList.remove('hidden');
+        });
+    });
+
+    // Save buttons — each saves only its section
+    document.querySelectorAll('.cfg-save-btn').forEach(btn => {
+        btn.addEventListener('click', () => cfgSave(btn.dataset.cfgSection));
+    });
+
+    // Load data
+    await cfgLoad();
+}
+
+async function cfgLoad() {
+    // Get clinic id from JWT payload (clinic is already logged-in via super-login)
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        _cfgClinicId = payload.clinicId;
+    } catch(e) { return; }
+
+    const res = await fetch(`${API_BASE}/api/super/clinics/${_cfgClinicId}?superPassword=${encodeURIComponent(_superPwd())}`);
+    if (!res.ok) { cfgStatus('Failed to load clinic data', 'error'); return; }
+    _cfgData = await res.json();
+    cfgPopulate(_cfgData);
+}
+
+function cfgPopulate(d) {
+    const c = d.config || {};
+    const hero = c.hero || {};
+    const theme = c.theme || {};
+    const doctors = c.doctors || [];
+    const hours = d.working_hours || {};
+
+    // Identity
+    _setVal('cfg-name', d.name);
+    _setVal('cfg-slug', d.slug);
+    _setVal('cfg-tagline', c.tagline);
+    _setVal('cfg-logo', c.logo);
+    _setVal('cfg-custom-domain', d.custom_domain);
+    _setVal('cfg-admin-email', d.admin_email);
+
+    // Theme
+    _setVal('cfg-theme-preset', theme.preset);
+    _setVal('cfg-theme-accent', theme.accentColor || '#2DD4BF');
+    _setVal('cfg-theme-font', theme.font);
+    _setVal('cfg-theme-hero-layout', theme.heroLayout);
+    _setVal('cfg-theme-card-style', theme.cardStyle);
+    _setVal('cfg-theme-icon-style', theme.iconStyle);
+    _setVal('cfg-theme-lang', theme.defaultLanguage);
+
+    // Hero
+    _setVal('cfg-hero-headline', hero.headline);
+    _setVal('cfg-hero-subtext', hero.subtext);
+    _setVal('cfg-hero-image', hero.heroImage);
+    _setVal('cfg-hero-video', hero.heroVideo || '');
+    _setVal('cfg-hero-badge', hero.badgeText || '');
+    _setVal('cfg-hero-fb-title', hero.floatingBadge?.title || '');
+    _setVal('cfg-hero-fb-subtitle', hero.floatingBadge?.subtitle || '');
+
+    // Stats repeater
+    const statsList = document.getElementById('cfg-stats-list');
+    statsList.innerHTML = '';
+    (hero.stats || []).forEach(s => cfgAddStat(s));
+
+    // Journey steps repeater
+    const stepsList = document.getElementById('cfg-steps-list');
+    stepsList.innerHTML = '';
+    (hero.journeySteps || []).forEach(s => cfgAddStep(s));
+
+    // Services
+    const svcList = document.getElementById('cfg-services-list');
+    svcList.innerHTML = '';
+    (d.services || []).forEach(s => cfgAddService(s));
+    _setVal('cfg-slot-duration', d.slot_duration_min);
+    _setVal('cfg-slot-mode', d.slot_mode || 'fixed');
+
+    // Doctors
+    const docList = document.getElementById('cfg-doctors-list');
+    docList.innerHTML = '';
+    doctors.forEach(doc => cfgAddDoctor(doc));
+
+    // Hours
+    cfgRenderHours(hours);
+
+    // Contact
+    _setVal('cfg-contact-phone', d.contact_phone);
+    _setVal('cfg-contact-address', d.contact_address);
+    _setVal('cfg-contact-map', d.contact_map_url || c.contact?.mapEmbedUrl || '');
+
+    // Visibility, WhatsApp, Reviews
+    cfgPopulateVisibility(d);
+    cfgPopulateWhatsapp(d);
+    cfgPopulateReviews(d);
+
+    // Wire upload fields — runs once per cfgLoad. Guard prevents double-wiring on reload.
+    if (!document.getElementById('cfg-logo')._uploadWired) {
+        [
+            ['cfg-logo',       'logo'],
+            ['cfg-hero-image', 'hero'],
+            ['cfg-hero-video', 'video'],
+        ].forEach(([id, type]) => {
+            const el = document.getElementById(id);
+            if (el) { cfgMakeUploadField(el, type); el._uploadWired = true; }
+        });
+    }
+}
+
+// ── Collect helpers per section ──────────────────────────────
+function cfgCollectIdentity() {
+    const payload = {
+        name: _getVal('cfg-name'),
+        slug: _getVal('cfg-slug'),
+        custom_domain: _getVal('cfg-custom-domain'),
+        admin_email: _getVal('cfg-admin-email'),
+        tagline: _getVal('cfg-tagline'),
+        logo: _getVal('cfg-logo')
+    };
+    const pwd = _getVal('cfg-admin-password');
+    if (pwd) payload.admin_password = pwd;
+    return payload;
+}
+
+function cfgCollectTheme() {
+    return {
+        theme: {
+            preset: _getVal('cfg-theme-preset'),
+            accentColor: _getVal('cfg-theme-accent'),
+            font: _getVal('cfg-theme-font'),
+            heroLayout: _getVal('cfg-theme-hero-layout'),
+            cardStyle: _getVal('cfg-theme-card-style'),
+            iconStyle: _getVal('cfg-theme-icon-style'),
+            defaultLanguage: _getVal('cfg-theme-lang')
+        }
+    };
+}
+
+function cfgCollectHero() {
+    const stats = [...document.querySelectorAll('.cfg-stat-row')].map(r => ({
+        value: parseFloat(r.querySelector('.stat-value').value) || 0,
+        suffix: r.querySelector('.stat-suffix').value,
+        label: r.querySelector('.stat-label').value
+    }));
+    const journeySteps = [...document.querySelectorAll('.cfg-step-row')].map(r => ({
+        label: r.querySelector('.step-label').value,
+        image: r.querySelector('.step-image').value
+    }));
+    return {
+        hero: {
+            headline: _getVal('cfg-hero-headline'),
+            subtext: _getVal('cfg-hero-subtext'),
+            heroImage: _getVal('cfg-hero-image'),
+            heroVideo: _getVal('cfg-hero-video') || null,
+            badgeText: _getVal('cfg-hero-badge') || null,
+            floatingBadge: {
+                title: _getVal('cfg-hero-fb-title'),
+                subtitle: _getVal('cfg-hero-fb-subtitle')
+            },
+            stats,
+            journeySteps
+        }
+    };
+}
+
+function cfgCollectServices() {
+    const services = [...document.querySelectorAll('.cfg-svc-row')].map(r => ({
+        id: r.querySelector('.svc-id').value,
+        name: r.querySelector('.svc-name').value,
+        durationMin: parseInt(r.querySelector('.svc-duration').value) || 30,
+        priceDisplay: r.querySelector('.svc-price').value,
+        image: r.querySelector('.svc-image').value
+    }));
+    return {
+        services,
+        slot_duration_min: parseInt(_getVal('cfg-slot-duration')) || 30,
+        slot_mode: _getVal('cfg-slot-mode')
+    };
+}
+
+function cfgCollectDoctors() {
+    const doctors = [...document.querySelectorAll('.cfg-doc-card')].map(r => ({
+        name: r.querySelector('.doc-name').value,
+        qualification: r.querySelector('.doc-qual').value,
+        bio: r.querySelector('.doc-bio').value,
+        photo: r.querySelector('.doc-photo').value,
+        description: r.querySelector('.doc-desc').value,
+        credentials: r.querySelector('.doc-creds').value.split('\n').map(s => s.trim()).filter(Boolean)
+    }));
+    return { doctors };
+}
+
+function cfgCollectHours() {
+    const days = ['mon','tue','wed','thu','fri','sat','sun'];
+    const working_hours = {};
+    days.forEach(day => {
+        const closedCb = document.querySelector(`[data-day-closed="${day}"]`);
+        if (closedCb?.checked) { working_hours[day] = null; return; }
+        working_hours[day] = {
+            open: document.querySelector(`[data-day-open="${day}"]`)?.value || '10:00',
+            close: document.querySelector(`[data-day-close="${day}"]`)?.value || '19:00'
+        };
+    });
+    return { working_hours };
+}
+
+function cfgCollectContact() {
+    return {
+        contact_phone: _getVal('cfg-contact-phone'),
+        contact_address: _getVal('cfg-contact-address'),
+        contact_map_url: _getVal('cfg-contact-map'),
+        contact: { mapEmbedUrl: _getVal('cfg-contact-map') }
+    };
+}
+
+// ── Visibility & Reviews & WhatsApp collectors ────────────────
+// Pattern: new visibility key → add to VIS_KEYS. New WA feature → add to WA_FEATURE_KEYS.
+
+const VIS_KEYS = [
+    { key: 'show_stats_bar',         label: 'Stats Bar' },
+    { key: 'show_ratings',           label: 'Star Ratings' },
+    { key: 'show_doctor_section',    label: 'Doctor Section' },
+    { key: 'show_gallery',           label: 'Gallery Section' },
+    { key: 'show_pricing',           label: 'Pricing Display' },
+    { key: 'show_lead_form',         label: 'Lead / Callback Form' },
+    { key: 'show_google_review_btn', label: 'Google Review Button' },
+    { key: 'show_whatsapp_fab',      label: 'WhatsApp Float Button' },
+    { key: 'show_working_hours',     label: 'Working Hours Table' }
+];
+
+const WA_FEATURE_KEYS = [
+    'booking_confirmation_patient',
+    'booking_alert_owner',
+    'booking_reminder_24h',
+    'booking_review_request',
+    'payment_receipt',
+    'birthday_greeting'
+];
+
+function cfgPopulateVisibility(d) {
+    const vis = d.visibility_settings || {};
+    const grid = document.getElementById('cfg-visibility-grid');
+    if (!grid) return;
+    grid.innerHTML = VIS_KEYS.map(t => `
+        <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+            <input type="checkbox" data-cfg-vis-key="${t.key}" ${vis[t.key] !== false ? 'checked' : ''} class="accent-accent">
+            ${t.label}
+        </label>`).join('');
+    _setVal('cfg-google-review', d.config?.google_review_link || d.google_review_link || '');
+    const superOnly = document.getElementById('cfg-super-admin-only');
+    if (superOnly) superOnly.checked = !!d.config?.super_admin_only;
+}
+
+function cfgPopulateWhatsapp(d) {
+    const wa = d.config?.whatsapp || {};
+    _setVal('cfg-wa-number', wa.clinicNumber || '');
+    const cb = document.getElementById('cfg-wa-confirmation');
+    if (cb) cb.checked = !!wa.confirmation_enabled;
+    const list = document.getElementById('cfg-wa-features-list');
+    if (!list) return;
+    const features = wa.features || {};
+    list.innerHTML = WA_FEATURE_KEYS.map(key => {
+        const f = features[key] || { locked: true, enabled: false };
+        return `<div class="flex items-center justify-between p-2 border border-slate-100 rounded-theme">
+            <span class="text-xs font-semibold text-slate-700">${key.replace(/_/g,' ')}</span>
+            <div class="flex items-center gap-3">
+                <label class="text-xs text-slate-400 flex items-center gap-1">
+                    <input type="checkbox" data-cfg-wa-locked="${key}" ${f.locked ? 'checked' : ''} class="accent-rose-400"> Locked
+                </label>
+                <label class="text-xs text-slate-400 flex items-center gap-1">
+                    <input type="checkbox" data-cfg-wa-enabled="${key}" ${f.enabled ? 'checked' : ''} class="accent-accent"> On
+                </label>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function cfgPopulateReviews(d) {
+    const list = document.getElementById('cfg-reviews-list');
+    if (!list) return;
+    list.innerHTML = '';
+    (d.reviews || []).forEach(r => cfgAddReview(r));
+}
+
+window.cfgAddReview = function(r = {}) {
+    const div = document.createElement('div');
+    div.className = 'cfg-review-row border border-slate-200 rounded-theme p-3 space-y-2';
+    div.innerHTML = `
+        <div class="flex gap-2">
+            <input class="rev-name cfg-input flex-1" placeholder="Patient Name" value="${r.name || ''}">
+            <select class="rev-rating cfg-input w-20">${[5,4,3,2,1].map(n=>`<option value="${n}" ${(r.rating||5)==n?'selected':''}>${n}★</option>`).join('')}</select>
+            <button onclick="this.closest('.cfg-review-row').remove()" class="text-rose-400 text-lg font-bold px-1">×</button>
+        </div>
+        <textarea class="rev-text cfg-input" rows="2" placeholder="Review text">${r.text || ''}</textarea>`;
+    document.getElementById('cfg-reviews-list').appendChild(div);
+};
+
+function cfgCollectVisibility() {
+    const vis = {};
+    document.querySelectorAll('[data-cfg-vis-key]').forEach(cb => { vis[cb.dataset.cfgVisKey] = cb.checked; });
+    return {
+        visibility_settings: vis,
+        google_review_link: _getVal('cfg-google-review'),
+        super_admin_only: document.getElementById('cfg-super-admin-only')?.checked || false
+    };
+}
+
+function cfgCollectWhatsapp() {
+    const features = {};
+    WA_FEATURE_KEYS.forEach(key => {
+        features[key] = {
+            locked: document.querySelector(`[data-cfg-wa-locked="${key}"]`)?.checked || false,
+            enabled: document.querySelector(`[data-cfg-wa-enabled="${key}"]`)?.checked || false
+        };
+    });
+    return {
+        whatsapp: {
+            clinicNumber: _getVal('cfg-wa-number'),
+            confirmation_enabled: document.getElementById('cfg-wa-confirmation')?.checked || false,
+            features
+        }
+    };
+}
+
+function cfgCollectReviews() {
+    return {
+        reviews: [...document.querySelectorAll('.cfg-review-row')].map(r => ({
+            name: r.querySelector('.rev-name').value.trim(),
+            rating: parseInt(r.querySelector('.rev-rating').value),
+            text: r.querySelector('.rev-text').value.trim()
+        })).filter(r => r.name && r.text)
+    };
+}
+
+// ── Save dispatcher ───────────────────────────────────────────
+const _cfgCollectors = {
+    identity: cfgCollectIdentity,
+    theme: cfgCollectTheme,
+    hero: cfgCollectHero,
+    services: cfgCollectServices,
+    doctors: cfgCollectDoctors,
+    hours: cfgCollectHours,
+    contact: cfgCollectContact,
+    visibility: cfgCollectVisibility,
+    whatsapp: cfgCollectWhatsapp,
+    reviews: cfgCollectReviews
+};
+
+async function cfgSave(section) {
+    if (!_cfgClinicId) return;
+    const payload = { superPassword: _superPwd(), ..._cfgCollectors[section]() };
+    cfgStatus('Saving...', 'info');
+    try {
+        const res = await fetch(`${API_BASE}/api/super/clinics/${_cfgClinicId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Save failed');
+        sessionStorage.removeItem('_cc');
+        cfgStatus('Saved!', 'success');
+        // Reload fresh data into editor
+        await cfgLoad();
+    } catch(e) {
+        cfgStatus(e.message, 'error');
+    }
+}
+
+// ── Repeater row builders ─────────────────────────────────────
+window.cfgAddStat = function(s = {}) {
+    const div = document.createElement('div');
+    div.className = 'cfg-stat-row flex gap-2 items-center';
+    div.innerHTML = `
+        <input class="stat-value cfg-input w-20" placeholder="2500" value="${s.value ?? ''}">
+        <input class="stat-suffix cfg-input w-16" placeholder="+" value="${s.suffix ?? ''}">
+        <input class="stat-label cfg-input flex-1" placeholder="Happy Patients" value="${s.label ?? ''}">
+        <button onclick="this.closest('.cfg-stat-row').remove()" class="text-rose-400 text-lg font-bold px-1">×</button>`;
+    document.getElementById('cfg-stats-list').appendChild(div);
+};
+
+window.cfgAddStep = function(s = {}) {
+    const div = document.createElement('div');
+    div.className = 'cfg-step-row flex gap-2 items-center';
+    div.innerHTML = `
+        <input class="step-label cfg-input flex-1" placeholder="Step label" value="${s.label ?? ''}">
+        <input class="step-image cfg-input flex-1" placeholder="/uploads/assets/clinic_001/step/step.jpg" value="${s.image ?? ''}">
+        <button onclick="this.closest('.cfg-step-row').remove()" class="text-rose-400 text-lg font-bold px-1">×</button>`;
+    cfgMakeUploadField(div.querySelector('.step-image'), 'step');
+    document.getElementById('cfg-steps-list').appendChild(div);
+};
+
+window.cfgAddService = function(s = {}) {
+    const div = document.createElement('div');
+    div.className = 'cfg-svc-row grid grid-cols-4 gap-2 items-center';
+    div.innerHTML = `
+        <input class="svc-id cfg-input text-xs" placeholder="svc_1" value="${s.id ?? ''}">
+        <input class="svc-name cfg-input" placeholder="Service name" value="${s.name ?? ''}">
+        <input class="svc-duration cfg-input w-full" type="number" placeholder="30" value="${s.durationMin ?? 30}">
+        <div class="flex gap-1">
+            <input class="svc-price cfg-input flex-1" placeholder="₹500" value="${s.priceDisplay ?? ''}">
+            <button onclick="this.closest('.cfg-svc-row').remove()" class="text-rose-400 text-lg font-bold px-1">×</button>
+        </div>
+        <div class="md:col-span-4 flex gap-2 items-center">
+            <label class="cfg-label w-24 flex-shrink-0">Service Image</label>
+            <input class="svc-image cfg-input flex-1" placeholder="/uploads/assets/clinic_001/service/service_1.jpg" value="${s.image ?? ''}">
+        </div>`;
+    // Wire upload field on the image input
+    const imgInput = div.querySelector('.svc-image');
+    cfgMakeUploadField(imgInput, 'service');
+    document.getElementById('cfg-services-list').appendChild(div);
+};
+
+window.cfgAddDoctor = function(d = {}) {
+    const creds = Array.isArray(d.credentials) ? d.credentials.join('\n') : '';
+    const div = document.createElement('div');
+    div.className = 'cfg-doc-card border border-slate-200 rounded-theme p-4 space-y-3';
+    div.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div><label class="cfg-label">Name</label><input class="doc-name cfg-input" value="${d.name ?? ''}"></div>
+            <div><label class="cfg-label">Qualification</label><input class="doc-qual cfg-input" value="${d.qualification ?? ''}"></div>
+            <div><label class="cfg-label">Photo URL</label><input class="doc-photo cfg-input" value="${d.photo ?? ''}"></div>
+            <div><label class="cfg-label">Bio</label><input class="doc-bio cfg-input" value="${d.bio ?? ''}"></div>
+            <div class="md:col-span-2"><label class="cfg-label">Description</label><textarea class="doc-desc cfg-input" rows="2">${d.description ?? ''}</textarea></div>
+            <div class="md:col-span-2"><label class="cfg-label">Credentials (one per line)</label><textarea class="doc-creds cfg-input" rows="3">${creds}</textarea></div>
+        </div>
+        <button onclick="this.closest('.cfg-doc-card').remove()" class="text-xs text-rose-400 font-bold hover:underline">Remove Doctor</button>`;
+    cfgMakeUploadField(div.querySelector('.doc-photo'), 'doctor');
+    document.getElementById('cfg-doctors-list').appendChild(div);
+};
+
+function cfgRenderHours(hours) {
+    const days = ['mon','tue','wed','thu','fri','sat','sun'];
+    const labels = { mon:'Monday',tue:'Tuesday',wed:'Wednesday',thu:'Thursday',fri:'Friday',sat:'Saturday',sun:'Sunday' };
+    const container = document.getElementById('cfg-hours-grid');
+    container.innerHTML = days.map(day => {
+        const h = hours[day];
+        const closed = h === null;
+        return `
+        <div class="flex items-center gap-3">
+            <span class="w-24 text-xs font-semibold text-slate-600">${labels[day]}</span>
+            <input type="checkbox" data-day-closed="${day}" ${closed ? 'checked' : ''} onchange="cfgToggleDay('${day}', this.checked)">
+            <span class="text-xs text-slate-400 w-12" id="cfg-day-closed-label-${day}">${closed ? 'Closed' : ''}</span>
+            <div id="cfg-day-hours-${day}" class="${closed ? 'hidden' : ''} flex items-center gap-2">
+                <input type="time" data-day-open="${day}" value="${h?.open || '10:00'}" class="cfg-input w-28 text-xs">
+                <span class="text-slate-400 text-xs">to</span>
+                <input type="time" data-day-close="${day}" value="${h?.close || '19:00'}" class="cfg-input w-28 text-xs">
+            </div>
+        </div>`;
+    }).join('');
+}
+
+window.cfgToggleDay = function(day, isClosed) {
+    document.getElementById(`cfg-day-hours-${day}`)?.classList.toggle('hidden', isClosed);
+    const lbl = document.getElementById(`cfg-day-closed-label-${day}`);
+    if (lbl) lbl.textContent = isClosed ? 'Closed' : '';
+};
+
+// ── Utils ─────────────────────────────────────────────────────
+function _setVal(id, val) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (val === null || val === undefined) return;
+    el.value = val;
+}
+function _getVal(id) {
+    return document.getElementById(id)?.value ?? '';
+}
+function cfgStatus(msg, type) {
+    const el = document.getElementById('cfg-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = `text-xs font-semibold text-center ${
+        type === 'success' ? 'text-emerald-600' :
+        type === 'error'   ? 'text-rose-500' : 'text-slate-500'
+    }`;
+    el.classList.remove('hidden');
+    if (type === 'success') setTimeout(() => el.classList.add('hidden'), 3000);
+}
+
+// ── Hook into tab switch ──────────────────────────────────────
+// Lazy-load: only fetch when tab first opened
+let _cfgTabInited = false;
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelector('[data-tab="clinic-config"]')?.addEventListener('click', () => {
+        if (!_cfgTabInited) {
+            _cfgTabInited = true;
+            initClinicConfigTab();
+        }
+    });
+});
+
+// Show super admin tab when super admin is logged in
+async function loginAsClinic(slug) {
+    document.getElementById('super-clinic-picker').classList.add('hidden');
+    try {
+        const res = await fetch(`${API_BASE}/api/auth/super-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug, superPassword: SUPER_ADMIN_PASSWORD })
+        });
+        if (!res.ok) throw new Error('Super login failed');
+        const data = await res.json();
+        setAuthToken(data.token, slug, false);
+        sessionStorage.setItem('is_super_admin', 'true');
+        sessionStorage.setItem('super_admin_pwd', SUPER_ADMIN_PASSWORD);
+        showDashboard();
+    } catch(e) {
+        showLoginError(e.message);
+        showLogin();
+    }
+}
+
+window.loginAsClinic = loginAsClinic;
+
+// Hook into existing tab switching if available, else auto-init
+function initGalleryAndSettings() {
+    setupGalleryUpload();
+    
+    const saveBtn = document.getElementById('btn-save-settings');
+    if (saveBtn) saveBtn.addEventListener('click', saveSettings);
+
+    document.getElementById('whatsapp-templates-list')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-edit-whatsapp-template]');
+        if (!btn) return;
+        openWhatsappTemplateModal(
+            btn.dataset.editWhatsappTemplate,
+            btn.dataset.templateLabel,
+            btn.dataset.templateDesc,
+            btn.dataset.customText
+        );
+    });
+
+    document.getElementById('whatsapp-template-modal-close')?.addEventListener('click', closeWhatsappTemplateModal);
+    document.getElementById('whatsapp-template-modal-cancel')?.addEventListener('click', closeWhatsappTemplateModal);
+    document.getElementById('whatsapp-template-modal-save')?.addEventListener('click', saveWhatsappTemplateText);
+}
+
+// Auto-init when DOM ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initGalleryAndSettings);
+} else {
+    initGalleryAndSettings();
+}

@@ -1,0 +1,61 @@
+# Phase 2 Implementation Tasks
+
+- [x] §0. Foundational Changes
+  - [ ] Apply SQL schema changes manually (user to execute)
+  - [x] Update `DELETE /api/appointments/:id` to soft cancel in `backend/routes/appointments.js`
+  - [x] Update availability check in `backend/routes/slots.js` to skip `status='cancelled'`
+  - [x] Add backend validation in public/admin POST routes for duplicate booking checks
+- [x] §1. Emergency Appointment
+  - [x] Add toggle and problem note elements to step 3 in `index.html`
+  - [x] Add inputs to manual booking modal in `admin.html`
+  - [x] Update POST routes in `backend/routes/appointments.js` to save `problem_note` and `is_emergency`
+  - [x] Style cards in `admin.js` for emergency tags, and sort them to top
+  - [x] Handle emergency WhatsApp templates prefix
+- [x] §2. WhatsApp Confirmation Address & Phone Enrichment
+  - [x] Fetch contact details from clinics on booking and add as params 5 and 6
+- [x] §3. Reschedule and Cancel Public Actions
+  - [x] Create `manage-booking.html` public view
+  - [x] Add `GET /api/appointments/lookup`
+  - [x] Add `PATCH /api/appointments/:id/reschedule`
+  - [x] Add `PATCH /api/appointments/:id/cancel`
+- [x] §4. Repeat Patient Recognition
+  - [x] Add `GET /api/patients/lookup`
+  - [x] Add phone blur event handler on public booking widget
+- [x] §5. Today's Appointments List enhancements
+  - [x] Render status badges and quick action buttons on card
+- [x] §7. History panel in Admin
+  - [x] Refactor card rendering to `renderAppointmentCard(appt)`
+  - [x] Add `GET /api/appointments/history` endpoint
+  - [x] Implement History tab filter panels and date inputs
+- [x] §8. Complete Visit Workflow
+  - [x] Add `complete-visit-modal` in `admin.html`
+  - [x] Add `PATCH /api/appointments/:id/complete` with server-calculated payment status
+- [x] §9. Google Review Requests
+  - [x] Add `POST /api/appointments/:id/request-review`
+  - [x] Trigger review requests in complete success modal
+- [x] §10. Doctor Dashboard
+  - [x] Add `POST /api/auth/doctor-login`
+  - [x] Create `doctor.html` and `doctor-dashboard.html`
+- [x] §11. Login updates
+  - [x] Add Remember Me checkbox, centralize token manager in `admin.js`
+  - [x] Add Forgot/Reset Password endpoints via WhatsApp OTP and updates
+  - [x] Add Change Password endpoint
+- [x] §12. Language Switch
+  - [x] Build `i18n/en.json` and `hi.json`
+  - [x] Implement `js/i18n.js` mapping and toggle
+- [x] §13. Search Patient panel
+  - [x] Add `GET /api/patients/search`
+  - [x] Implement search field, drop panel, and document list display in admin
+- [x] §15. Before/After Gallery
+  - [x] Add slider card renderer in `app.js`
+- [x] §16. Follow-up view
+  - [x] Add `GET /api/appointments/followups` and `PATCH /api/appointments/:id/followup-done` endpoints
+  - [x] Add follow-up panel tab in admin
+- [x] §17 & 20. Reports and Dashboard stats
+  - [x] Add `GET /api/reports/summary`
+  - [x] Build charts and dashboards using Chart.js
+- [x] §18. Walk-in patient quick-add
+  - [x] Add walk-in shortcut button and bypass slot checks
+- [x] §19. Document Uploads
+  - [x] Integrate `multer` file uploader and routes
+  - [x] Add document upload actions in patient details slide-out
