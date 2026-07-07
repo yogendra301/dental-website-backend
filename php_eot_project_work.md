@@ -908,7 +908,8 @@ Fixed card height matching, vertical spacing, and grid alignment on mobile scree
 # Task: Style Service Cards with Soft Dental Glass and Aura Glow
 
 ## Task Details
-Changed service cards background to clean white `#ffffff` to eliminate the heavy flat grey style. Replaced the hard dark bottom gradient on service card images with a soft dental glass/aura card look. Utilized `:nth-child(3n+1)`, `:nth-child(3n+2)`, and `:nth-child(3n)` selectors to alternate the glows subtly between teal, blue, and warm pink auras, matching a responsive shift on hover.
+Changed service cards background to clean white `#ffffff` to eliminate the heavy flat grey style. Replaced the hard dark bottom gradient on service card images with a soft dental glass/aura card look. Utilized `:nth-child(3n+1)`, `:nth-child(3n+2)`, and `:nth-child(3n)` selectors to alternate the glows subtly between teal, blue, and warm pink auras, matching a responsive shift on hover. Removed `backdrop-filter: blur(...)` to keep the clinical dental photos 100% sharp and crisp while maintaining the soft color aura overlays.
+
 
 ## Files Changed
 - `index.html` (frontend)
