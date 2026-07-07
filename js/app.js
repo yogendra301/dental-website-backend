@@ -986,32 +986,66 @@ function initBookingWidget() {
         }
     }
 
-    // Render Service List in step 1
+    // Render Service List in step 1 - show exactly 3 specified services + custom dropdown
     const servicesList = document.getElementById('booking-services-list');
     let servicesHtml = '';
-    clinicConfig.services.forEach(svc => {
+    
+    // Find these three main services
+    const svc1 = clinicConfig.services.find(s => s.id === 'svc_1') || { id: 'svc_1', name: 'Tooth Pain & Checkup', durationMin: 30 };
+    const svc5 = clinicConfig.services.find(s => s.id === 'svc_5') || { id: 'svc_5', name: 'Root Canal Treatment (RCT)', durationMin: 60 };
+    const svc7 = clinicConfig.services.find(s => s.id === 'svc_7') || { id: 'svc_7', name: 'Cleaning & Polishing', durationMin: 60 };
+    const mainServices = [svc1, svc5, svc7];
+
+    servicesHtml += `<div class="grid grid-cols-2 gap-3">`;
+    mainServices.forEach(svc => {
         servicesHtml += `
-            <div data-id="${svc.id}" class="booking-service-opt border border-slate-200 hover:border-accent p-4 rounded-theme flex items-center justify-between cursor-pointer transition-theme">
-                <div>
-                    <p class="font-bold text-slate-900">${svc.name}</p>
-                    <p class="text-xs text-slate-500">${svc.durationMin} mins</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <div class="opt-indicator h-5 w-5 rounded-full border-2 border-slate-200 flex items-center justify-center">
-                        <div class="h-2.5 w-2.5 rounded-full bg-accent scale-0 transition-transform"></div>
-                    </div>
+            <div data-id="${svc.id}" class="booking-service-opt border border-slate-300 bg-white/95 hover:border-accent p-5 rounded-theme flex flex-col items-center justify-center cursor-pointer transition-theme text-center shadow-sm hover:shadow-md hover:bg-slate-50/50">
+                <p class="font-bold text-slate-900 text-sm">${svc.name}</p>
+                <p class="text-xs text-slate-500 mt-1">${svc.durationMin} mins</p>
+                <div class="opt-indicator h-5 w-5 rounded-full border-2 border-slate-300 flex items-center justify-center mt-2">
+                    <div class="h-2.5 w-2.5 rounded-full bg-accent scale-0 transition-transform"></div>
                 </div>
             </div>
         `;
     });
+
+    // 4th slot: More Services dropdown card
     servicesHtml += `
-        <div id="booking-custom-service" class="border border-dashed border-slate-300 p-4 rounded-theme cursor-pointer transition-theme">
+        <div id="booking-dropdown-service-card" class="relative border border-slate-300 bg-white/95 hover:border-accent p-5 rounded-theme flex flex-col items-center justify-center cursor-pointer transition-theme text-center shadow-sm hover:shadow-md hover:bg-slate-50/50">
+            <p id="booking-dropdown-title" class="font-bold text-slate-900 text-sm">More Services</p>
+            <p id="booking-dropdown-subtitle" class="text-xs text-slate-500 mt-1">View all our services</p>
+            <div class="mt-2 text-slate-400">
+                <i id="booking-dropdown-arrow" class="fa-solid fa-chevron-down text-xs transition-transform duration-200"></i>
+            </div>
+            <!-- Custom dropdown panel -->
+            <div id="booking-services-dropdown-list" class="hidden absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-theme shadow-xl z-50 max-h-60 overflow-y-auto py-1 text-left">
+    `;
+    
+    clinicConfig.services.forEach(svc => {
+        servicesHtml += `
+                <div data-id="${svc.id}" class="booking-dropdown-item px-4 py-2.5 hover:bg-teal-50/30 border-b border-slate-100 last:border-0 cursor-pointer flex justify-between items-center transition-colors">
+                    <div>
+                        <p class="font-semibold text-slate-800 text-sm">${svc.name}</p>
+                        <p class="text-xs text-slate-400 mt-0.5">${svc.durationMin} mins</p>
+                    </div>
+                </div>
+        `;
+    });
+
+    servicesHtml += `
+            </div>
+        </div>
+    `;
+
+    servicesHtml += `</div>`; // Close grid
+    servicesHtml += `
+        <div id="booking-custom-service" class="border border-dashed border-slate-400 bg-white/95 p-4 rounded-theme cursor-pointer transition-theme mt-3 shadow-sm hover:shadow-md hover:border-accent">
             <div class="flex items-center justify-between gap-3">
                 <div>
                     <p class="font-bold text-slate-900">Other / Not Listed</p>
                     <p class="text-xs text-slate-500">Tell us what you need and we’ll help.</p>
                 </div>
-                <div class="opt-indicator h-5 w-5 rounded-full border-2 border-slate-200 flex items-center justify-center">
+                <div class="opt-indicator h-5 w-5 rounded-full border-2 border-slate-300 flex items-center justify-center">
                     <div class="h-2.5 w-2.5 rounded-full bg-accent scale-0 transition-transform"></div>
                 </div>
             </div>
@@ -1019,11 +1053,26 @@ function initBookingWidget() {
         </div>
     `;
     servicesList.innerHTML = servicesHtml;
-    
+
     // Set up step 1 service selector clicks
     const serviceOpts = document.querySelectorAll('.booking-service-opt');
     const customServiceCard = document.getElementById('booking-custom-service');
     const customServiceInput = document.getElementById('booking-custom-service-input');
+    const dropdownCard = document.getElementById('booking-dropdown-service-card');
+    const dropdownList = document.getElementById('booking-services-dropdown-list');
+    const dropdownArrow = document.getElementById('booking-dropdown-arrow');
+    const dropdownTitle = document.getElementById('booking-dropdown-title');
+    const dropdownSubtitle = document.getElementById('booking-dropdown-subtitle');
+
+    // Reset dropdown card visual state
+    function resetDropdownCard() {
+        if (dropdownCard) {
+            dropdownCard.classList.remove('border-accent', 'bg-teal-50/20');
+            dropdownTitle.textContent = 'More Services';
+            dropdownSubtitle.textContent = 'View all our services';
+        }
+    }
+
     serviceOpts.forEach(opt => {
         opt.addEventListener('click', () => {
             serviceOpts.forEach(o => {
@@ -1031,16 +1080,27 @@ function initBookingWidget() {
                 o.querySelector('.opt-indicator').classList.remove('border-accent');
                 o.querySelector('.opt-indicator div').classList.add('scale-0');
             });
+            if (customServiceCard) {
+                customServiceCard.classList.remove('border-accent', 'bg-teal-50/20');
+                customServiceCard.querySelector('.opt-indicator').classList.remove('border-accent');
+                customServiceCard.querySelector('.opt-indicator div').classList.add('scale-0');
+            }
+            resetDropdownCard();
+
             opt.classList.add('border-accent', 'bg-teal-50/20');
             opt.querySelector('.opt-indicator').classList.add('border-accent');
             opt.querySelector('.opt-indicator div').classList.remove('scale-0');
-            if (customServiceInput) customServiceInput.classList.add('hidden');
-            
+            if (customServiceInput) {
+                customServiceInput.classList.add('hidden');
+                customServiceInput.value = '';
+            }
+
             selectedService = clinicConfig.services.find(s => s.id === opt.dataset.id);
             updateSidebar();
             validateStep();
         });
     });
+
     if (customServiceCard && customServiceInput) {
         customServiceCard.addEventListener('click', () => {
             serviceOpts.forEach(o => {
@@ -1048,6 +1108,8 @@ function initBookingWidget() {
                 o.querySelector('.opt-indicator').classList.remove('border-accent');
                 o.querySelector('.opt-indicator div').classList.add('scale-0');
             });
+            resetDropdownCard();
+
             customServiceCard.classList.add('border-accent', 'bg-teal-50/20');
             customServiceCard.querySelector('.opt-indicator').classList.add('border-accent');
             customServiceCard.querySelector('.opt-indicator div').classList.remove('scale-0');
@@ -1061,6 +1123,69 @@ function initBookingWidget() {
             selectedService.name = customServiceInput.value.trim();
             updateSidebar();
             validateStep();
+        });
+    }
+
+    // Toggle dropdown card click
+    if (dropdownCard) {
+        dropdownCard.addEventListener('click', (e) => {
+            if (e.target.closest('#booking-services-dropdown-list')) {
+                return;
+            }
+            const isHidden = dropdownList.classList.contains('hidden');
+            if (isHidden) {
+                dropdownList.classList.remove('hidden');
+                dropdownArrow.classList.add('rotate-180');
+            } else {
+                dropdownList.classList.add('hidden');
+                dropdownArrow.classList.remove('rotate-180');
+            }
+        });
+
+        // Dropdown item selection click
+        const dropdownItems = document.querySelectorAll('.booking-dropdown-item');
+        dropdownItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Deselect standard options
+                serviceOpts.forEach(o => {
+                    o.classList.remove('border-accent', 'bg-teal-50/20');
+                    o.querySelector('.opt-indicator').classList.remove('border-accent');
+                    o.querySelector('.opt-indicator div').classList.add('scale-0');
+                });
+                // Deselect custom options
+                if (customServiceCard) {
+                    customServiceCard.classList.remove('border-accent', 'bg-teal-50/20');
+                    customServiceCard.querySelector('.opt-indicator').classList.remove('border-accent');
+                    customServiceCard.querySelector('.opt-indicator div').classList.add('scale-0');
+                }
+                if (customServiceInput) {
+                    customServiceInput.classList.add('hidden');
+                    customServiceInput.value = '';
+                }
+
+                // Select this service
+                const svc = clinicConfig.services.find(s => s.id === item.dataset.id);
+                if (svc) {
+                    selectedService = svc;
+                    dropdownTitle.textContent = svc.name;
+                    dropdownSubtitle.textContent = `${svc.durationMin} mins`;
+                    dropdownCard.classList.add('border-accent', 'bg-teal-50/20');
+                }
+
+                dropdownList.classList.add('hidden');
+                dropdownArrow.classList.remove('rotate-180');
+                updateSidebar();
+                validateStep();
+            });
+        });
+
+        // Close when clicking away
+        document.addEventListener('click', (e) => {
+            if (!dropdownCard.contains(e.target)) {
+                dropdownList.classList.add('hidden');
+                dropdownArrow.classList.remove('rotate-180');
+            }
         });
     }
     
