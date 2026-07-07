@@ -21,7 +21,8 @@ export async function resolveClinicConfig() {
             google_review_link: demoSettings.google_review_link || null,
             visibility_settings: demoSettings.visibility_settings || {},
             // Demo services derived from client-config services array
-            services: clientConfigFallback.services || []
+            services: clientConfigFallback.services || [],
+            reviews: demoSettings.reviews || clientConfigFallback.reviews || []
         };
 
         return demoConfig;

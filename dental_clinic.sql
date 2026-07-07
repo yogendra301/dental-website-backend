@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Jul 03, 2026 at 12:59 PM
+-- Generation Time: Jul 07, 2026 at 08:44 AM
 -- Server version: 8.0.45-0ubuntu0.24.04.1
 -- PHP Version: 8.3.6
 
@@ -57,18 +57,12 @@ CREATE TABLE `appointments` (
 --
 
 INSERT INTO `appointments` (`id`, `clinic_id`, `patient_name`, `patient_phone`, `service`, `date`, `time_slot`, `status`, `source`, `problem_note`, `is_emergency`, `treatment_performed`, `doctor_notes`, `medicines_instructions`, `follow_up_date`, `follow_up_note`, `follow_up_completed`, `treatment_cost`, `discount`, `amount_paid`, `payment_method`, `payment_status`) VALUES
-(1, 1, 'vikas', '9754640521', 'General Checkup', '2026-06-29', '10:00', 'confirmed', 'phone', NULL, 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(2, 1, 'yogendra', '+919754640521', 'General Checkup', '2026-06-30', '12:30', 'no_show', 'online', 'severe pain', 1, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(3, 1, 'yogendra', '+919754640521', 'General Checkup', '2026-07-01', '10:30', 'pending', 'online', 'pain in teeth', 1, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(4, 1, 'Yogendra Sisodiya', '+919754640521', 'Teeth Cleaning', '2026-06-29', '10:30', 'confirmed', 'phone', 'pain happening', 1, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(5, 1, 'Vikas sharma', '+919926719320', 'General Checkup', '2026-07-01', '12:00', 'pending', 'online', 'Wisdom tooth pain issue', 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(6, 1, 'rani yadav', '+919754640521', 'Teeth Cleaning', '2026-06-30', '14:45', 'confirmed', 'walkin', NULL, 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(7, 1, 'jitendra sharma', '+919786574321', 'General Checkup', '2026-06-30', '12:00', 'confirmed', 'phone', NULL, 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(8, 1, 'yogendra sisodiya', '+919754640521', 'pain in the tooth', '2026-07-06', '18:00', 'cancelled', 'online', 'having pain in the wisdon tooth', 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(9, 1, 'vikas patil', '+910026719320', 'Dental Checkup & X-Rays', '2026-07-04', '14:30', 'pending', 'online', 'teeth checkup', 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(10, 1, 'manoj sharma', '+919617145663', 'Dental Checkup & X-Rays', '2026-07-06', '15:30', 'pending', 'online', 'teeth checkup', 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(11, 1, 'rani yadav', '+919765460543', 'Dental Checkup & X-Rays', '2026-07-09', '17:00', 'pending', 'online', 'dental checkup', 0, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid'),
-(12, 1, 'Swati kunrawat', '+919926719320', 'Dental Checkup & X-Rays', '2026-07-03', '10:00', 'confirmed', 'phone', '', 1, NULL, NULL, NULL, NULL, NULL, 0, NULL, 0.00, 0.00, NULL, 'unpaid');
+(13, 1, 'Rahul Sharma', '+919876543210', 'Dental Checkup & X-Rays', '2026-07-06', '10:30', 'pending', 'online', 'Routine checkup and slight sensitivity in lower teeth', 0, NULL, NULL, NULL, NULL, NULL, 0, 500.00, 0.00, 0.00, NULL, 'unpaid'),
+(14, 1, 'Priya Patel', '+919123456789', 'Teeth Cleaning & Polishing', '2026-07-06', '11:30', 'confirmed', 'phone', 'Needs plaque removal and polishing', 0, NULL, NULL, NULL, NULL, NULL, 0, 1200.00, 0.00, 0.00, NULL, 'unpaid'),
+(15, 1, 'Amit Kumar', '+919988776655', 'Root Canal Treatment (RCT)', '2026-07-06', '14:00', 'completed', 'walkin', 'Severe toothache in upper left molar', 1, 'Single sitting RCT completed', 'Avoid chewing hard food on left side for 3 days.', 'Amoxicillin 500mg (3 days), Paracetamol 650mg (SOS)', '2026-07-06', 'Check crown alignment', 0, 4000.00, 0.00, 4000.00, 'Cash', 'paid'),
+(16, 1, 'Sneha Reddy', '+919876505566', 'Teeth Whitening & Bleaching', '2026-07-03', '11:00', 'completed', 'online', 'Wants shade improvement for upcoming wedding', 0, 'Laser teeth whitening procedure completed successfully.', 'Use desensitizing paste if sensitivity occurs.', NULL, NULL, NULL, 0, 6000.00, 0.00, 6000.00, 'UPI', 'paid'),
+(17, 1, 'Vikram Malhotra', '+919112233445', 'Dental Implants', '2026-06-30', '15:30', 'completed', 'phone', 'Missing lower right molar extraction site healed', 0, 'First stage implant placement done. Sutures removed.', 'Keep area clean. Gentle rinsing with chlorhexidine.', NULL, '2026-07-06', 'Implant healing check and suture check', 0, 25000.00, 0.00, 15000.00, 'Card', 'partially_paid'),
+(18, 1, 'Ananya Sen', '+919223344556', 'Wisdom Teeth Extraction', '2026-07-03', '09:30', 'completed', 'walkin', 'Pain and swelling in lower right jaw due to impacted wisdom tooth', 0, 'Simple extraction of lower molar under local anesthesia.', 'Bite on gauze for 45 mins. Cold pack on cheek.', 'Painkiller and antibiotics prescribed.', '2026-07-03', 'Post-extraction healing check. Patient reported slight swelling.', 1, 1500.00, 0.00, 1500.00, 'Cash', 'paid');
 
 -- --------------------------------------------------------
 
@@ -78,10 +72,10 @@ INSERT INTO `appointments` (`id`, `clinic_id`, `patient_name`, `patient_phone`, 
 
 CREATE TABLE `clinics` (
   `id` int NOT NULL,
-  `username` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `username` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `services` json NOT NULL,
-  `working_hours` json NOT NULL,
+  `services` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  `working_hours` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   `slot_duration_min` int NOT NULL DEFAULT '30',
   `contact_phone` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `contact_address` text COLLATE utf8mb4_unicode_ci NOT NULL,
@@ -89,36 +83,41 @@ CREATE TABLE `clinics` (
   `admin_password_hash` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
   `admin_email` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `slot_mode` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT 'fixed',
-  `custom_slots` json DEFAULT NULL,
+  `custom_slots` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
   `custom_domain` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `doctor_pin_hash` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reset_otp` varchar(10) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reset_otp_expires` datetime DEFAULT NULL,
   `google_review_link` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `config` json DEFAULT NULL,
-  `visibility_settings` json DEFAULT NULL,
+  `config` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
+  `visibility_settings` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
   `whatsapp_phone_number_id` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `reviews` json DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `reviews` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin
+) ;
 
 --
 -- Dumping data for table `clinics`
 --
 
 INSERT INTO `clinics` (`id`, `username`, `name`, `services`, `working_hours`, `slot_duration_min`, `contact_phone`, `contact_address`, `contact_map_url`, `admin_password_hash`, `admin_email`, `slot_mode`, `custom_slots`, `custom_domain`, `doctor_pin_hash`, `reset_otp`, `reset_otp_expires`, `google_review_link`, `config`, `visibility_settings`, `whatsapp_phone_number_id`, `reviews`) VALUES
-(1, 'clinic_001', 'Your dental care', '[{\"id\": \"svc_1\", \"name\": \"Tooth Pain & Checkup\", \"image\": \"/uploads/assets/clinic_001/service/service_1.png\", \"description\": \"Comprehensive oral examination with digital X-rays to detect cavities, gum disease, and other issues early.\", \"durationMin\": 30, \"priceDisplay\": \"₹500\"}, {\"id\": \"svc_2\", \"name\": \"Orthodontics (Braces)\", \"image\": \"/uploads/assets/clinic_001/service/service_2.png\", \"description\": \"Metal and ceramic braces to correct misaligned teeth and bite for a confident, straight smile.\", \"durationMin\": 60, \"priceDisplay\": \"₹1200\"}, {\"id\": \"svc_3\", \"name\": \"Dental Implants\", \"image\": \"/uploads/assets/clinic_001/service/service_3.png\", \"description\": \"Permanent titanium implants that look, feel, and function like natural teeth for missing tooth replacement.\", \"durationMin\": 60, \"priceDisplay\": \"₹4000\"}, {\"id\": \"svc_4\", \"name\": \"Crowns and Bridges\", \"image\": \"/uploads/assets/clinic_001/service/service_4.png\", \"description\": \"Custom-crafted ceramic crowns and bridges to restore damaged or missing teeth with natural appearance.\", \"durationMin\": 60, \"priceDisplay\": \"₹6500\"}, {\"id\": \"svc_5\", \"name\": \"Root Canal Treatment (RCT)\", \"image\": \"/uploads/assets/clinic_001/service/service_5.png\", \"description\": \"Pain-free root canal therapy to save infected or severely damaged teeth and eliminate tooth pain.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_6\", \"name\": \"Teeth Whitening & Bleaching\", \"image\": \"/uploads/assets/clinic_001/service/service_6.png\", \"description\": \"Professional in-office whitening treatment to remove stains and brighten your smile by several shades.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_7\", \"name\": \"Cleaning & Polishing\", \"image\": \"/uploads/assets/clinic_001/service/service_7.png\", \"description\": \"Professional scaling and polishing to remove tartar, plaque, and stains for healthier gums and teeth.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_8\", \"name\": \"Smile Designing\", \"image\": \"/uploads/assets/clinic_001/service/service_8.png\", \"description\": \"Complete smile makeover combining whitening, veneers, and contouring to create your perfect smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_9\", \"name\": \"Kids Dentistry\", \"image\": \"/uploads/assets/clinic_001/service/service_9.png\", \"description\": \"Gentle, friendly dental care for children including checkups, fluoride, and sealants in a kid-safe environment.\", \"durationMin\": 30, \"priceDisplay\": \"\"}, {\"id\": \"svc_10\", \"name\": \"Wisdom Teeth Extraction\", \"image\": \"/uploads/assets/clinic_001/service/service_10.png\", \"description\": \"Safe and comfortable removal of wisdom teeth causing pain, crowding, or infection.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_11\", \"name\": \"Tooth Colored Fillings\", \"image\": \"/uploads/assets/clinic_001/service/service_11.png\", \"description\": \"Natural-looking composite resin fillings that blend perfectly with your teeth — no dark metal.\", \"durationMin\": 30, \"priceDisplay\": \"\"}, {\"id\": \"svc_12\", \"name\": \"Aligners and Gum Surgery\", \"image\": \"/uploads/assets/clinic_001/service/service_12.png\", \"description\": \"Clear removable aligners for discreet teeth straightening, plus gum contouring for a balanced smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_13\", \"name\": \"Full Mouth Rehabilitation\", \"image\": \"/uploads/assets/clinic_001/service/service_13.png\", \"description\": \"Comprehensive restoration of all teeth combining implants, crowns, and cosmetic treatments.\", \"durationMin\": 90, \"priceDisplay\": \"\"}, {\"id\": \"svc_14\", \"name\": \"Facial Aesthetic\", \"image\": \"/uploads/assets/clinic_001/service/service_14.png\", \"description\": \"Non-surgical facial treatments including Botox and fillers to complement your dental transformation.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_15\", \"name\": \"Cosmetic & Laser Dental Treatment\", \"image\": \"/uploads/assets/clinic_001/service/service_15.png\", \"description\": \"Advanced laser procedures for painless gum reshaping, cavity treatment, and smile enhancement.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_16\", \"name\": \"Dental Veneers and Laminates\", \"image\": \"/uploads/assets/clinic_001/service/service_16.png\", \"description\": \"Ultra-thin porcelain shells bonded to teeth to correct shape, color, and size for a flawless smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}]',: \"\"}]', '{\"fri\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"mon\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"sat\": {\"open\": \"10:00\", \"close\": \"15:00\"}, \"sun\": null, \"thu\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"tue\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"wed\": {\"open\": \"10:00\", \"close\": \"19:00\"}}', 30, '+91XXXXXXXXXX', '123 MG Road, City', 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d29436.842455096437!2d75.8874112!3d22.7429071!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39631d54503f21d3%3A0xc114629679b13584!2sBombay%20Hospital!5e0!3m2!1sen!2sin!4v1782892257006!5m2!1sen!2sin', '$2y$10$HriNYjFePXSSV7vSb/tLBelMOqvA8NVZyBcR7g75h6KIca2I1ahn6', 'drvikas@gmail.com', 'fixed', NULL, 'drvikas.dental.com', NULL, NULL, NULL, '', '{\"hero\": {\"stats\": [{\"label\": \"Happy Patients\", \"value\": 500, \"suffix\": \"+\"}, {\"label\": \"Years Experience\", \"value\": 10, \"suffix\": \"+\"}, {\"label\": \"Sterilized Clinic\", \"value\": 100, \"suffix\": \"%\"}], \"subtext\": \"From the first consultation to a lifetime of care – we are with you every step of your dental journey.\", \"headline\": \"A Healthy Smile<br>Begins Here\", \"badgeText\": \"Your Smile, Our Priority\", \"heroImage\": \"/uploads/assets/clinic_001/hero/hero.jpg\", \"heroVideo\": \"/uploads/assets/clinic_001/video/hero-loop.mp4\", \"journeySteps\": [{\"image\": \"/uploads/assets/clinic_001/step/hero_card1.png\", \"label\": \"Consultation & Planning\", \"description\": \"Pick a date & time\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card2.png\", \"label\": \"Diagnostics & X-Rays\", \"description\": \"Advanced scan & expert evaluation.\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card3.png\", \"label\": \"Personalized Care\", \"description\": \"Personalized care with comfort & precision.\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card4.png\", \"label\": \"Healthy Maintenance\", \"description\": \"Long-term care for a healthy, beautiful smile.\"}], \"journeyTitle\": \"Your Dental Journey\", \"floatingBadge\": {\"title\": \"ISO Certified Clinic\", \"subtitle\": \"All equipment sterilized\"}}, \"logo\": \"/uploads/assets/clinic_001/logo/logo.png\", \"name\": \"Your dental care\", \"theme\": {\"font\": \"Outfit\", \"preset\": \"warm\", \"cardStyle\": \"soft\", \"iconStyle\": \"line\", \"heroLayout\": \"journey\", \"accentColor\": \"#2DD4BF\", \"defaultLanguage\": \"en\"}, \"contact\": {\"mapEmbedUrl\": \"https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d29436.842455096437!2d75.8874112!3d22.7429071!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39631d54503f21d3%3A0xc114629679b13584!2sBombay%20Hospital!5e0!3m2!1sen!2sin!4v1782892257006!5m2!1sen!2sin\"}, \"doctors\": [{\"bio\": \"12+ years experience in family dentistry.\", \"name\": \"Dr. Anita Sharma\", \"photo\": \"/uploads/assets/clinic_001/doctor/doctor1.jpg\", \"credentials\": [\"Certified Dental Practitioner\", \"Member of IDA\", \"Invisalign Specialist\"], \"description\": \"Dr. Anita Sharma is an Orthodontist and Aesthetic dentist who believes that only quality work leads to a great clinical practice.\", \"qualification\": \"BDS, MDS (Orthodontics)\"}], \"tagline\": \"Modern Technology. Compassionate Care. Beautiful Results.\", \"whatsapp\": {\"features\": [], \"connected\": 1, \"access_token\": \"\", \"clinicNumber\": \"+91XXXXXXXXXX\", \"phone_number_id\": \"\", \"business_account_id\": \"\", \"confirmation_enabled\": true}, \"super_admin_only\": true, \"google_review_link\": \"\"}', '{\"show_gallery\": true, \"show_pricing\": true, \"show_ratings\": true, \"show_lead_form\": true, \"show_stats_bar\": true, \"show_whatsapp_fab\": true, \"show_working_hours\": true, \"show_doctor_section\": true, \"show_google_review_btn\": true}', NULL, '[{\"name\": \"Priya Sharma\", \"text\": \"Excellent experience! Dr. Sharma was very gentle and explained everything clearly. My root canal was completely painless.\", \"rating\": 5}, {\"name\": \"Rahul Mehta\", \"text\": \"Best dental clinic in the area. Staff is friendly and clinic is spotless. Highly recommend for families.\", \"rating\": 5}, {\"name\": \"Anjali Verma\", \"text\": \"I was terrified of dentists but they made me feel so comfortable. My smile transformation has boosted my confidence!\", \"rating\": 4}, {\"name\": \"Vikram Patel\", \"text\": \"Very professional team. Got my teeth cleaned and they look amazing. Booking was super easy through the website.\", \"rating\": 5}, {\"name\": \"yogendra\", \"text\": \"Very professional team. Got my teeth cleaned and they look amazing. Booking was super easy through the website.\", \"rating\": 5}]');
+(1, 'clinic_001', 'Your dental care', '[{\"id\": \"svc_1\", \"name\": \"Tooth Pain & Checkup\", \"image\": \"/uploads/assets/clinic_001/service/service_1.png\", \"description\": \"Comprehensive oral examination with digital X-rays to detect cavities, gum disease, and other issues early.\", \"durationMin\": 30, \"priceDisplay\": \"₹500\"}, {\"id\": \"svc_2\", \"name\": \"Orthodontics (Braces)\", \"image\": \"/uploads/assets/clinic_001/service/service_2.png\", \"description\": \"Metal and ceramic braces to correct misaligned teeth and bite for a confident, straight smile.\", \"durationMin\": 60, \"priceDisplay\": \"₹1200\"}, {\"id\": \"svc_3\", \"name\": \"Dental Implants\", \"image\": \"/uploads/assets/clinic_001/service/service_3.png\", \"description\": \"Permanent titanium implants that look, feel, and function like natural teeth for missing tooth replacement.\", \"durationMin\": 60, \"priceDisplay\": \"₹4000\"}, {\"id\": \"svc_4\", \"name\": \"Crowns and Bridges\", \"image\": \"/uploads/assets/clinic_001/service/service_4.png\", \"description\": \"Custom-crafted ceramic crowns and bridges to restore damaged or missing teeth with natural appearance.\", \"durationMin\": 60, \"priceDisplay\": \"₹6500\"}, {\"id\": \"svc_5\", \"name\": \"Root Canal Treatment (RCT)\", \"image\": \"/uploads/assets/clinic_001/service/service_5.png\", \"description\": \"Pain-free root canal therapy to save infected or severely damaged teeth and eliminate tooth pain.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_6\", \"name\": \"Teeth Whitening & Bleaching\", \"image\": \"/uploads/assets/clinic_001/service/service_6.png\", \"description\": \"Professional in-office whitening treatment to remove stains and brighten your smile by several shades.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_7\", \"name\": \"Cleaning & Polishing\", \"image\": \"/uploads/assets/clinic_001/service/service_7.png\", \"description\": \"Professional scaling and polishing to remove tartar, plaque, and stains for healthier gums and teeth.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_8\", \"name\": \"Smile Designing\", \"image\": \"/uploads/assets/clinic_001/service/service_8.png\", \"description\": \"Complete smile makeover combining whitening, veneers, and contouring to create your perfect smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_9\", \"name\": \"Kids Dentistry\", \"image\": \"/uploads/assets/clinic_001/service/service_9.png\", \"description\": \"Gentle, friendly dental care for children including checkups, fluoride, and sealants in a kid-safe environment.\", \"durationMin\": 30, \"priceDisplay\": \"\"}, {\"id\": \"svc_10\", \"name\": \"Wisdom Teeth Extraction\", \"image\": \"/uploads/assets/clinic_001/service/service_10.png\", \"description\": \"Safe and comfortable removal of wisdom teeth causing pain, crowding, or infection.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_11\", \"name\": \"Tooth Colored Fillings\", \"image\": \"/uploads/assets/clinic_001/service/service_11.png\", \"description\": \"Natural-looking composite resin fillings that blend perfectly with your teeth — no dark metal.\", \"durationMin\": 30, \"priceDisplay\": \"\"}, {\"id\": \"svc_12\", \"name\": \"Aligners and Gum Surgery\", \"image\": \"/uploads/assets/clinic_001/service/service_12.png\", \"description\": \"Clear removable aligners for discreet teeth straightening, plus gum contouring for a balanced smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_13\", \"name\": \"Full Mouth Rehabilitation\", \"image\": \"/uploads/assets/clinic_001/service/service_13.png\", \"description\": \"Comprehensive restoration of all teeth combining implants, crowns, and cosmetic treatments.\", \"durationMin\": 90, \"priceDisplay\": \"\"}, {\"id\": \"svc_14\", \"name\": \"Facial Aesthetic\", \"image\": \"/uploads/assets/clinic_001/service/service_14.png\", \"description\": \"Non-surgical facial treatments including Botox and fillers to complement your dental transformation.\", \"durationMin\": 45, \"priceDisplay\": \"\"}, {\"id\": \"svc_15\", \"name\": \"Cosmetic & Laser Dental Treatment\", \"image\": \"/uploads/assets/clinic_001/service/service_15.png\", \"description\": \"Advanced laser procedures for painless gum reshaping, cavity treatment, and smile enhancement.\", \"durationMin\": 60, \"priceDisplay\": \"\"}, {\"id\": \"svc_16\", \"name\": \"Dental Veneers and Laminates\", \"image\": \"/uploads/assets/clinic_001/service/service_16.png\", \"description\": \"Ultra-thin porcelain shells bonded to teeth to correct shape, color, and size for a flawless smile.\", \"durationMin\": 60, \"priceDisplay\": \"\"}]', '{\"fri\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"mon\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"sat\": {\"open\": \"10:00\", \"close\": \"15:00\"}, \"sun\": null, \"thu\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"tue\": {\"open\": \"10:00\", \"close\": \"19:00\"}, \"wed\": {\"open\": \"10:00\", \"close\": \"19:00\"}}', 30, '+91XXXXXXXXXX', '123 MG Road, City', 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d29436.842455096437!2d75.8874112!3d22.7429071!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39631d54503f21d3%3A0xc114629679b13584!2sBombay%20Hospital!5e0!3m2!1sen!2sin!4v1782892257006!5m2!1sen!2sin', '$2y$10$HriNYjFePXSSV7vSb/tLBelMOqvA8NVZyBcR7g75h6KIca2I1ahn6', 'drvikas@gmail.com', 'fixed', NULL, 'drvikas.dental.com', NULL, NULL, NULL, '', '{\"hero\": {\"stats\": [{\"label\": \"Happy Patients\", \"value\": 500, \"suffix\": \"+\"}, {\"label\": \"Years Experience\", \"value\": 7, \"suffix\": \"+\"}, {\"label\": \"Sterilized Clinic\", \"value\": 100, \"suffix\": \"%\"}], \"subtext\": \"From the first consultation to a lifetime of care – we are with you every step of your dental journey.\", \"headline\": \"A Healthy Smile<br>Begins Here\", \"badgeText\": \"Your Smile, Our Priority\", \"heroImage\": \"/uploads/assets/clinic_001/hero/hero.jpg\", \"heroVideo\": \"/uploads/assets/clinic_001/video/hero-loop.mp4\", \"journeySteps\": [{\"image\": \"/uploads/assets/clinic_001/step/hero_card1.png\", \"label\": \"CONSULTATION\", \"description\": \"Pick a date & time\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card2.png\", \"label\": \"DIGITAL DIAGNOSIS\", \"description\": \"Advanced scan & expert evaluation.\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card3.png\", \"label\": \"TREATMENT\", \"description\": \"Personalized care with comfort & precision.\"}, {\"image\": \"/uploads/assets/clinic_001/step/hero_card4.png\", \"label\": \"HEALTHY SMILE\", \"description\": \"Long-term care for a healthy, beautiful smile.\"}], \"journeyTitle\": \"Your Dental Journey\", \"floatingBadge\": {\"title\": \"ISO Certified Clinic\", \"subtitle\": \"All equipment sterilized\"}}, \"logo\": \"/uploads/assets/clinic_001/logo/logo.png\", \"name\": \"Your dental care\", \"theme\": {\"font\": \"Outfit\", \"preset\": \"warm\", \"cardStyle\": \"soft\", \"iconStyle\": \"line\", \"heroLayout\": \"journey\", \"accentColor\": \"#2DD4BF\", \"defaultLanguage\": \"en\"}, \"contact\": {\"mapEmbedUrl\": \"https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d29436.842455096437!2d75.8874112!3d22.7429071!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39631d54503f21d3%3A0xc114629679b13584!2sBombay%20Hospital!5e0!3m2!1sen!2sin!4v1782892257006!5m2!1sen!2sin\"}, \"doctors\": [{\"bio\": \"7+ years experience in family dentistry.\", \"name\": \"Dr. Vikas Sharma\", \"photo\": \"/uploads/assets/clinic_001/doctor/doctor1.jpg\", \"credentials\": [\"Certified Dental Practitioner\", \"Member of IDA\", \"Invisalign Specialist\"], \"description\": \"Dr. Vikas Sharma is an Orthodontist and Aesthetic dentist who believes that only quality work leads to a great clinical practice.\", \"qualification\": \"BDS, MDS (Orthodontics)\"}], \"tagline\": \"Modern Technology. Compassionate Care. Beautiful Results.\", \"whatsapp\": {\"features\": [], \"connected\": 1, \"access_token\": \"\", \"clinicNumber\": \"+91XXXXXXXXXX\", \"phone_number_id\": \"\", \"business_account_id\": \"\", \"confirmation_enabled\": true, \"enabled\": true}, \"super_admin_only\": true, \"google_review_link\": \"\"}', '{\"show_gallery\": true, \"show_pricing\": true, \"show_reviews\": true, \"show_lead_form\": true, \"show_stats_bar\": true, \"show_whatsapp_fab\": true, \"show_working_hours\": true, \"show_doctor_section\": true, \"show_google_review_btn\": true, \"show_services\": true, \"show_booking_section\": true, \"show_contact_section\": true}', NULL, '[{\"name\": \"Priya Sharma\", \"text\": \"Excellent experience! Dr. Sharma was very gentle and explained everything clearly. My root canal was completely painless.\", \"rating\": 5}, {\"name\": \"Rahul Mehta\", \"text\": \"Best dental clinic in the area. Staff is friendly and clinic is spotless. Highly recommend for families.\", \"rating\": 5}, {\"name\": \"Anjali Verma\", \"text\": \"I was terrified of dentists but they made me feel so comfortable. My smile transformation has boosted my confidence!\", \"rating\": 4}, {\"name\": \"Vikram Patel\", \"text\": \"Very professional team. Got my teeth cleaned and they look amazing. Booking was super easy through the website.\", \"rating\": 5}, {\"name\": \"yogendra\", \"text\": \"Very professional team. Got my teeth cleaned and they look amazing. Booking was super easy through the website.\", \"rating\": 5}]');
 
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `gallery`
+--
 
 CREATE TABLE `gallery` (
   `id` int NOT NULL,
   `clinic_id` int NOT NULL,
-  `type` enum('single','single_ba','before_after') NOT NULL DEFAULT 'single',
-  `image_url` varchar(500) DEFAULT NULL,
-  `before_url` varchar(500) DEFAULT NULL,
-  `after_url` varchar(500) DEFAULT NULL,
-  `caption` varchar(255) DEFAULT NULL,
+  `type` enum('single','single_ba','before_after') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'single',
+  `image_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `before_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `after_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `caption` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `gallery`
@@ -128,7 +127,9 @@ INSERT INTO `gallery` (`id`, `clinic_id`, `type`, `image_url`, `before_url`, `af
 (11, 1, 'single', '/uploads/assets/clinic_001/gallery/1783062375-136b8916a4530d34.png', NULL, NULL, '', '2026-07-03 12:36:15'),
 (12, 1, 'single', '/uploads/assets/clinic_001/gallery/1783062384-c4ccc340122f9229.jpg', NULL, NULL, '', '2026-07-03 12:36:24'),
 (13, 1, 'single', '/uploads/assets/clinic_001/gallery/1783062392-d1c55fcd5f71b13b.jpeg', NULL, NULL, '', '2026-07-03 12:36:32'),
-(14, 1, 'single', '/uploads/assets/clinic_001/gallery/1783062402-e70008fb5c4ff4eb.webp', NULL, NULL, '', '2026-07-03 12:36:42');
+(14, 1, 'single', '/uploads/assets/clinic_001/gallery/1783062402-e70008fb5c4ff4eb.webp', NULL, NULL, '', '2026-07-03 12:36:42'),
+(15, 1, 'single', '/uploads/assets/clinic_001/gallery/1783226940-906c7714e31f6514.png', NULL, NULL, 'reception', '2026-07-05 10:19:00'),
+(16, 1, 'single', '/uploads/assets/clinic_001/gallery/1783226946-f27b80529ce3668f.png', NULL, NULL, 'treatment room', '2026-07-05 10:19:06');
 
 -- --------------------------------------------------------
 
@@ -139,20 +140,23 @@ INSERT INTO `gallery` (`id`, `clinic_id`, `type`, `image_url`, `before_url`, `af
 CREATE TABLE `leads` (
   `id` int NOT NULL,
   `clinic_id` int NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `phone` varchar(50) NOT NULL,
-  `interested_service` varchar(255) DEFAULT NULL,
-  `notes` text,
-  `status` varchar(20) NOT NULL DEFAULT 'new',
+  `name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `interested_service` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `status` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'new',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Dumping data for table `leads`
 --
 
 INSERT INTO `leads` (`id`, `clinic_id`, `name`, `phone`, `interested_service`, `notes`, `status`, `created_at`) VALUES
-(1, 1, 'yogendra sisodiya', '+919754640521', 'Other / General Inquiry', NULL, 'new', '2026-06-29 07:36:17');
+(2, 1, 'Rohan Das', '+919876501234', 'Dental Implants', 'Interested in full mouth implants. Requested callback regarding cost.', 'new', '2026-07-05 16:59:49'),
+(3, 1, 'Meera Nair', '+919123456000', 'Aligners and Gum Surgery', 'Spoke on phone. Shared pricing brochure. Patient will consult family.', 'contacted', '2026-07-04 16:59:49'),
+(4, 1, 'Karan Johar', '+919988771122', 'Teeth Whitening & Bleaching', 'Appointment booked for tomorrow under patient Priya Patel.', 'converted', '2026-07-03 16:59:49'),
+(5, 1, 'Suresh Raina', '+918877665544', 'Root Canal Treatment (RCT)', 'Found another clinic closer to their location.', 'lost', '2026-07-02 16:59:49');
 
 -- --------------------------------------------------------
 
@@ -163,13 +167,13 @@ INSERT INTO `leads` (`id`, `clinic_id`, `name`, `phone`, `interested_service`, `
 CREATE TABLE `patient_documents` (
   `id` int NOT NULL,
   `clinic_id` int NOT NULL,
-  `patient_phone` varchar(50) NOT NULL,
+  `patient_phone` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `appointment_id` int DEFAULT NULL,
-  `file_name` varchar(255) NOT NULL,
-  `file_path` varchar(500) NOT NULL,
-  `file_type` varchar(50) NOT NULL,
+  `file_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_path` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `file_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL,
   `uploaded_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -254,25 +258,25 @@ ALTER TABLE `slots_blocked`
 -- AUTO_INCREMENT for table `appointments`
 --
 ALTER TABLE `appointments`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=19;
 
 --
 -- AUTO_INCREMENT for table `clinics`
 --
 ALTER TABLE `clinics`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `gallery`
 --
 ALTER TABLE `gallery`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `leads`
 --
 ALTER TABLE `leads`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `patient_documents`

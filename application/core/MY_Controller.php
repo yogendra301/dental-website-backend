@@ -136,21 +136,247 @@ class MY_Controller extends CI_Controller {
         }
     }
 
-    /*
-     * WhatsApp notification helpers — disabled for now.
-     * Uncomment when WhatsApp sending is ready.
+    /**
+     * Send a WhatsApp message via Twilio.
+     * Sends a free-form text message to the given number.
+     * Twilio sandbox number is used when TWILIO_WHATSAPP_FROM is the sandbox number.
      *
-    protected function notifyEvent($template, $clinic, $to, $params = []) {
-        log_message('info', sprintf(
-            '[WhatsApp Notify] template=%s clinic_id=%d to=%s params=%s',
-            $template,
-            is_array($clinic) ? $clinic['id'] : $clinic->id,
-            $to,
-            json_encode($params)
-        ));
+     * @param string $to   Recipient number in E.164 format (e.g. +919876543210)
+     * @param string $body Message text
+     * @return bool
+     */
+    protected function sendTwilioWhatsApp($to, $body) {
+        $sid   = getenv('TWILIO_ACCOUNT_SID');
+        $token = getenv('TWILIO_AUTH_TOKEN');
+        $from  = getenv('TWILIO_WHATSAPP_FROM') ?: 'whatsapp:+14155238886';
+
+        if (empty($sid) || empty($token)) {
+            log_message('error', '[Twilio] TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN not set in env');
+            return false;
+        }
+
+        // Ensure number has whatsapp: prefix
+        $toFormatted = (strpos($to, 'whatsapp:') === 0) ? $to : 'whatsapp:' . $to;
+
+        $url  = "https://api.twilio.com/2010-04-01/Accounts/{$sid}/Messages.json";
+        $data = http_build_query([
+            'From' => $from,
+            'To'   => $toFormatted,
+            'Body' => $body,
+        ]);
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $data,
+            CURLOPT_USERPWD        => "{$sid}:{$token}",
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
+            CURLOPT_TIMEOUT        => 10,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr) {
+            log_message('error', "[Twilio] cURL error sending WhatsApp to {$to}: {$curlErr}");
+            return false;
+        }
+
+        if ($httpCode < 200 || $httpCode >= 300) {
+            log_message('error', "[Twilio] HTTP {$httpCode} sending WhatsApp to {$to}: {$response}");
+            return false;
+        }
+
+        log_message('info', "[Twilio] WhatsApp sent to {$to}, HTTP {$httpCode}");
         return true;
     }
 
+    /**
+     * Check if a specific WhatsApp notification is allowed for the clinic.
+     * Checks global toggle and specific feature flag.
+     *
+     * @param  array|object $clinic
+     * @param  string $template (e.g. 'booking_alert_owner', 'booking_confirmation_patient')
+     * @return bool
+     */
+    protected function isWhatsappNotificationAllowed($clinic, $template) {
+        $wa = $this->getWhatsappConfig($clinic);
+        
+        // 1. Is WhatsApp globally enabled for this clinic?
+        // Note: Default to false if not set.
+        $globalEnabled = isset($wa['enabled']) ? (bool)$wa['enabled'] : false;
+        if (!$globalEnabled) {
+            return false;
+        }
+
+        // 2. Map template key to feature key in config.whatsapp.features
+        $featureKey = $template;
+        if ($template === 'booking_alert_owner_emergency') {
+            $featureKey = 'booking_alert_owner';
+        }
+
+        $features = isset($wa['features']) ? $wa['features'] : [];
+        if (isset($features[$featureKey])) {
+            $feat = $features[$featureKey];
+            // If the template is locked or not enabled, don't send it.
+            if (($feat['locked'] ?? true) || !($feat['enabled'] ?? false)) {
+                return false;
+            }
+            return true;
+        }
+
+        // Fallbacks for confirmation if features list is empty or doesn't have it
+        if ($template === 'booking_confirmation_patient') {
+            return isset($wa['confirmation_enabled']) ? (bool)$wa['confirmation_enabled'] : false;
+        }
+
+        // For any templates not explicitly whitelisted as toggleable features, allow if global is enabled.
+        return true;
+    }
+
+    /**
+     * Fire a named notification event to a recipient.
+     * Currently wired for booking owner alert.
+     *
+     * @param string $template Event key (e.g. 'booking_alert_owner')
+     * @param array  $clinic   Clinic row array
+     * @param string $to       Recipient phone (E.164)
+     * @param array  $params   Template variables: [patientName, service, date, timeSlot, patientPhone]
+     */
+    protected function notifyEvent($template, $clinic, $to, $params = []) {
+        if (empty($to)) {
+            log_message('info', "[Twilio] notifyEvent skipped — no recipient number for template={$template}");
+            return false;
+        }
+
+        // Check if this notification template/type is allowed (global toggles + template feature flags)
+        if (!$this->isWhatsappNotificationAllowed($clinic, $template)) {
+            log_message('info', "[Twilio] notifyEvent skipped — notification template={$template} not enabled or locked for this clinic");
+            return false;
+        }
+
+        $clinicName = is_array($clinic) ? ($clinic['name'] ?? '') : '';
+
+        switch ($template) {
+            case 'booking_alert_owner':
+            case 'booking_alert_owner_emergency':
+                $patientName  = $params[0] ?? '';
+                $service      = $params[1] ?? '';
+                $date         = $params[2] ?? '';
+                $timeSlot     = $params[3] ?? '';
+                $patientPhone = $params[4] ?? '';
+                $emergency    = ($template === 'booking_alert_owner_emergency') ? " 🚨 *EMERGENCY*" : '';
+                $body = "📅 *New Booking Alert!*{$emergency}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "👤 *Patient:* {$patientName}\n"
+                      . "📞 *Phone:* {$patientPhone}\n"
+                      . "🦷 *Service:* {$service}\n"
+                      . "📆 *Date:* {$date}\n"
+                      . "⏰ *Time:* {$timeSlot}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Clinic: {$clinicName}";
+                break;
+
+            case 'booking_confirmation_patient':
+                $patientName    = $params[0] ?? '';
+                $cName          = $params[1] ?? $clinicName;
+                $date           = $params[2] ?? '';
+                $timeSlot       = $params[3] ?? '';
+                $clinicAddress  = $params[4] ?? '';
+                $clinicPhone    = $params[5] ?? '';
+                $body = "✅ *Appointment Confirmed!*\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Hello {$patientName},\n"
+                      . "Your appointment at *{$cName}* is confirmed.\n"
+                      . "📆 *Date:* {$date}\n"
+                      . "⏰ *Time:* {$timeSlot}\n"
+                      . "📍 *Address:* {$clinicAddress}\n"
+                      . "📞 *Clinic:* {$clinicPhone}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Please arrive 5 minutes early.";
+                break;
+
+            case 'booking_reschedule_patient':
+                $patientName  = $params[0] ?? '';
+                $cName        = $params[1] ?? $clinicName;
+                $newDate      = $params[2] ?? '';
+                $newTimeSlot  = $params[3] ?? '';
+                $body = "📆 *Appointment Rescheduled!*\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Hello {$patientName},\n"
+                      . "Your appointment at *{$cName}* has been rescheduled.\n"
+                      . "📆 *New Date:* {$newDate}\n"
+                      . "⏰ *New Time:* {$newTimeSlot}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "If this doesn't suit you, please contact us.";
+                break;
+
+            case 'booking_reschedule_owner':
+                $patientName  = $params[0] ?? '';
+                $service      = $params[1] ?? '';
+                $oldDate      = $params[2] ?? '';
+                $oldTimeSlot  = $params[3] ?? '';
+                $newDate      = $params[4] ?? '';
+                $newTimeSlot  = $params[5] ?? '';
+                $patientPhone = $params[6] ?? '';
+                $body = "🔄 *Booking Rescheduled Alert!*\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "👤 *Patient:* {$patientName}\n"
+                      . "📞 *Phone:* {$patientPhone}\n"
+                      . "🦷 *Service:* {$service}\n"
+                      . "🔴 *Was:* {$oldDate} @ {$oldTimeSlot}\n"
+                      . "🟢 *Now:* {$newDate} @ {$newTimeSlot}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Clinic: {$clinicName}";
+                break;
+
+            case 'booking_cancel_owner':
+                $patientName  = $params[0] ?? '';
+                $service      = $params[1] ?? '';
+                $date         = $params[2] ?? '';
+                $timeSlot     = $params[3] ?? '';
+                $patientPhone = $params[4] ?? '';
+                $body = "❌ *Booking Cancelled Alert!*\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "👤 *Patient:* {$patientName}\n"
+                      . "📞 *Phone:* {$patientPhone}\n"
+                      . "🦷 *Service:* {$service}\n"
+                      . "📆 *Date:* {$date} @ {$timeSlot}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Clinic: {$clinicName}";
+                break;
+
+            case 'booking_review_request':
+                $patientName = $params[0] ?? '';
+                $cName       = $params[1] ?? $clinicName;
+                $revLink     = $params[2] ?? '';
+                $body = "⭐ *Leave Us a Review!*\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Hello {$patientName},\n"
+                      . "Thank you for visiting *{$cName}*.\n"
+                      . "We hope you had a great experience! Please take 1 minute to share your feedback with us on Google:\n"
+                      . "🔗 {$revLink}\n"
+                      . "━━━━━━━━━━━━━━\n"
+                      . "Thank you for choosing us!";
+                break;
+
+            default:
+                log_message('info', "[Twilio] Unknown template: {$template}");
+                return false;
+        }
+
+        return $this->sendTwilioWhatsApp($to, $body);
+    }
+
+    /**
+     * Extract the clinic's WhatsApp config block.
+     *
+     * @param  array|object $clinic Clinic row
+     * @return array  WhatsApp config sub-array
+     */
     protected function getWhatsappConfig($clinic) {
         $config = null;
         if (is_array($clinic)) {
@@ -161,18 +387,23 @@ class MY_Controller extends CI_Controller {
         if (is_string($config)) {
             $config = json_decode($config, true);
         }
-        $wa = isset($config['whatsapp']) ? $config['whatsapp'] : [];
-        return $wa;
+        return isset($config['whatsapp']) ? $config['whatsapp'] : [];
     }
 
+    /**
+     * Get the clinic WhatsApp number and confirmation flag.
+     *
+     * @param  array $clinic
+     * @return array ['number' => string|null, 'confirmationEnabled' => bool]
+     */
     protected function getWhatsappMeta($clinic) {
         $wa = $this->getWhatsappConfig($clinic);
         return [
-            'number' => isset($wa['clinicNumber']) ? $wa['clinicNumber'] : null,
-            'confirmationEnabled' => isset($wa['confirmation_enabled']) ? (bool)$wa['confirmation_enabled'] : false
+            'number'              => isset($wa['clinicNumber']) ? $wa['clinicNumber'] : null,
+            'confirmationEnabled' => isset($wa['confirmation_enabled']) ? (bool)$wa['confirmation_enabled'] : false,
         ];
     }
-    */
+
 
     /**
      * Encrypt WhatsApp access token for storage

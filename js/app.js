@@ -238,23 +238,48 @@ function applyVisibilitySettings() {
     if (vis.show_stats_bar === false) {
         document.querySelectorAll('.stats-bar').forEach(el => el.classList.add('hidden'));
     }
+    if (vis.show_services === false) {
+        document.getElementById('services')?.classList.add('hidden');
+    }
     if (vis.show_doctor_section === false) {
         document.getElementById('doctor')?.classList.add('hidden');
     }
     if (vis.show_gallery === false) {
         document.getElementById('gallery')?.classList.add('hidden');
     }
+    if (vis.show_reviews === false) {
+        document.getElementById('reviews')?.classList.add('hidden');
+    }
+    if (vis.show_booking_section === false) {
+        document.getElementById('booking')?.classList.add('hidden');
+    }
+    if (vis.show_contact_section === false) {
+        document.getElementById('contact')?.classList.add('hidden');
+    }
     if (vis.show_lead_form === false) {
         document.getElementById('lead-form-section')?.classList.add('hidden');
     }
     if (vis.show_working_hours === false) {
-        document.getElementById('working-hours-card')?.classList.add('hidden');
+        (document.getElementById('working-hours-card') || document.getElementById('working-hours-table'))?.classList.add('hidden');
     }
     if (vis.show_whatsapp_fab === false) {
         document.getElementById('whatsapp-fab')?.classList.add('hidden');
     }
     if (vis.show_pricing === false) {
         document.querySelectorAll('[data-price-display]').forEach(el => el.classList.add('hidden'));
+    }
+
+    const googleReviewBtnContainer = document.getElementById('google-review-btn-container');
+    if (googleReviewBtnContainer) {
+        if (vis.show_google_review_btn !== false && clinicConfig.google_review_link) {
+            const googleReviewBtn = document.getElementById('google-review-btn');
+            if (googleReviewBtn) {
+                googleReviewBtn.href = clinicConfig.google_review_link;
+            }
+            googleReviewBtnContainer.classList.remove('hidden');
+        } else {
+            googleReviewBtnContainer.classList.add('hidden');
+        }
     }
 }
 
@@ -838,7 +863,10 @@ function renderReviews() {
     track.innerHTML = all.map(r => `
         <div class="review-card flex-shrink-0 w-72 bg-slate-50 border border-slate-100 rounded-2xl p-6 shadow-sm">
             <div class="flex gap-1 mb-3">
-                ${[1,2,3,4,5].map(() => `<svg class="w-4 h-4 text-yellow-400 fill-yellow-400" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>`).join('')}
+                ${[1, 2, 3, 4, 5].map(n => {
+                    const active = n <= (r.rating || 5);
+                    return `<svg class="w-4 h-4 ${active ? 'text-yellow-400 fill-yellow-400' : 'text-slate-200 fill-slate-200'}" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>`;
+                }).join('')}
             </div>
             <p class="text-slate-600 text-sm leading-relaxed mb-4">"${r.text}"</p>
             <div class="flex items-center gap-3">

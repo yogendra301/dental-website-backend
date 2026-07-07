@@ -2711,9 +2711,12 @@ function cfgCollectContact() {
 
 const VIS_KEYS = [
     { key: 'show_stats_bar',         label: 'Stats Bar' },
-    { key: 'show_ratings',           label: 'Star Ratings' },
+    { key: 'show_services',          label: 'Services Section' },
     { key: 'show_doctor_section',    label: 'Doctor Section' },
     { key: 'show_gallery',           label: 'Gallery Section' },
+    { key: 'show_reviews',           label: 'Reviews/Testimonials' },
+    { key: 'show_booking_section',   label: 'Booking Widget' },
+    { key: 'show_contact_section',   label: 'Contact Section' },
     { key: 'show_pricing',           label: 'Pricing Display' },
     { key: 'show_lead_form',         label: 'Lead / Callback Form' },
     { key: 'show_google_review_btn', label: 'Google Review Button' },
@@ -2749,6 +2752,8 @@ function cfgPopulateWhatsapp(d) {
     _setVal('cfg-wa-number', wa.clinicNumber || '');
     const cb = document.getElementById('cfg-wa-confirmation');
     if (cb) cb.checked = !!wa.confirmation_enabled;
+    const enabledCb = document.getElementById('cfg-wa-enabled');
+    if (enabledCb) enabledCb.checked = !!wa.enabled;
     const list = document.getElementById('cfg-wa-features-list');
     if (!list) return;
     const features = wa.features || {};
@@ -2808,6 +2813,7 @@ function cfgCollectWhatsapp() {
     });
     return {
         whatsapp: {
+            enabled: document.getElementById('cfg-wa-enabled')?.checked || false,
             clinicNumber: _getVal('cfg-wa-number'),
             confirmation_enabled: document.getElementById('cfg-wa-confirmation')?.checked || false,
             features

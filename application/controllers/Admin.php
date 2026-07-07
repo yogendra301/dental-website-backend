@@ -804,16 +804,35 @@ class Admin extends MY_Controller {
                 'is_emergency' => $isEmergency,
                 'problem_note' => $problemNote
             ]);
-            // WhatsApp alerts — disabled for now. Uncomment when WhatsApp sending is ready.
-            // $formattedDate = implode('/', array_reverse(explode('-', $date)));
-            // $alertTemplate = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
-            // $waMeta = $this->getWhatsappMeta($clinic);
-            // $this->notifyEvent($alertTemplate, $clinic, $waMeta['number'], [$patientName, $service, $formattedDate, $timeSlot, $normalizedPhone]);
-            // if ($waMeta['confirmationEnabled']) {
-            //     $this->notifyEvent('booking_confirmation_patient', $clinic, $normalizedPhone, [
-            //         $patientName, $clinic['name'], $formattedDate, $timeSlot, $clinic['contact_address'], $clinic['contact_phone']
-            //     ]);
-            // }
+            // Send WhatsApp alerts via Twilio (non-blocking — failure won't fail the booking)
+            try {
+                $formattedDate  = implode('/', array_reverse(explode('-', $date)));
+                $alertTemplate  = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
+                $waMeta         = $this->getWhatsappMeta($clinic);
+
+                // Always notify the clinic owner on their registered number
+                if (!empty($waMeta['number'])) {
+                    $this->notifyEvent(
+                        $alertTemplate,
+                        $clinic,
+                        $waMeta['number'],
+                        [$patientName, $service, $formattedDate, $timeSlot, $normalizedPhone]
+                    );
+                }
+
+                // Optionally send patient confirmation if clinic has enabled it
+                if ($waMeta['confirmationEnabled']) {
+                    $this->notifyEvent(
+                        'booking_confirmation_patient',
+                        $clinic,
+                        $normalizedPhone,
+                        [$patientName, $clinic['name'], $formattedDate, $timeSlot,
+                         $clinic['contact_address'], $clinic['contact_phone']]
+                    );
+                }
+            } catch (\Exception $waEx) {
+                log_message('error', 'WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
+            }
 
             $this->jsonResponse(['success' => true, 'appointmentId' => $apptId]);
         } catch (\Exception $e) {
@@ -913,19 +932,25 @@ class Admin extends MY_Controller {
                 'date' => $newDate,
                 'time_slot' => $newTimeSlot
             ]);
-            // WhatsApp alerts — disabled for now. Uncomment when WhatsApp sending is ready.
-            // $formattedNewDate = implode('/', array_reverse(explode('-', $newDate)));
-            // $formattedOldDate = date('d/m/Y', strtotime($appt['date']));
-            // $waMeta = $this->getWhatsappMeta($clinic);
-            // if ($waMeta['confirmationEnabled']) {
-            //     $this->notifyEvent('booking_reschedule_patient', $clinic, $normalizedPhone, [
-            //         $appt['patient_name'], $clinic['name'], $formattedNewDate, $newTimeSlot
-            //     ]);
-            // }
-            // $this->notifyEvent('booking_reschedule_owner', $clinic, $waMeta['number'], [
-            //     $appt['patient_name'], $appt['service'], $formattedOldDate, $appt['time_slot'],
-            //     $formattedNewDate, $newTimeSlot, $normalizedPhone
-            // ]);
+            // Send WhatsApp alerts via Twilio (non-blocking)
+            try {
+                $formattedNewDate = implode('/', array_reverse(explode('-', $newDate)));
+                $formattedOldDate = date('d/m/Y', strtotime($appt['date']));
+                $waMeta = $this->getWhatsappMeta($clinic);
+                
+                $this->notifyEvent('booking_reschedule_patient', $clinic, $normalizedPhone, [
+                    $appt['patient_name'], $clinic['name'], $formattedNewDate, $newTimeSlot
+                ]);
+                
+                if (!empty($waMeta['number'])) {
+                    $this->notifyEvent('booking_reschedule_owner', $clinic, $waMeta['number'], [
+                        $appt['patient_name'], $appt['service'], $formattedOldDate, $appt['time_slot'],
+                        $formattedNewDate, $newTimeSlot, $normalizedPhone
+                    ]);
+                }
+            } catch (\Exception $waEx) {
+                log_message('error', 'Reschedule WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
+            }
 
             $this->jsonResponse(['success' => true, 'message' => 'Appointment rescheduled successfully']);
         } catch (\Exception $e) {
@@ -963,12 +988,18 @@ class Admin extends MY_Controller {
             }
 
             $this->admin_model->cancelAppointment($id, $clinic['id']);
-            // WhatsApp alerts — disabled for now. Uncomment when WhatsApp sending is ready.
-            // $formattedDate = date('d/m/Y', strtotime($appt['date']));
-            // $waMeta = $this->getWhatsappMeta($clinic);
-            // $this->notifyEvent('booking_cancel_owner', $clinic, $waMeta['number'], [
-            //     $appt['patient_name'], $appt['service'], $formattedDate, $appt['time_slot'], $normalizedPhone
-            // ]);
+            // Send WhatsApp alerts via Twilio (non-blocking)
+            try {
+                $formattedDate = date('d/m/Y', strtotime($appt['date']));
+                $waMeta = $this->getWhatsappMeta($clinic);
+                if (!empty($waMeta['number'])) {
+                    $this->notifyEvent('booking_cancel_owner', $clinic, $waMeta['number'], [
+                        $appt['patient_name'], $appt['service'], $formattedDate, $appt['time_slot'], $normalizedPhone
+                    ]);
+                }
+            } catch (\Exception $waEx) {
+                log_message('error', 'Cancel WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
+            }
 
             $this->jsonResponse(['success' => true, 'message' => 'Appointment cancelled successfully']);
         } catch (\Exception $e) {
@@ -1063,19 +1094,25 @@ class Admin extends MY_Controller {
                 'is_emergency' => $isEmergency,
                 'problem_note' => $problemNote
             ]);
-            // WhatsApp alerts — disabled for now. Uncomment when WhatsApp sending is ready.
-            // $clinic = $this->admin_model->getClinicById($this->clinicId, 'name, contact_phone, contact_address, config');
-            // if ($clinic) {
-            //     $formattedDate = implode('/', array_reverse(explode('-', $date)));
-            //     $waMeta = $this->getWhatsappMeta($clinic);
-            //     $alertTemplate = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
-            //     $this->notifyEvent($alertTemplate, $clinic, $waMeta['number'], [$patientName, $service, $formattedDate, $timeSlot, $normalizedPhone]);
-            //     if ($waMeta['confirmationEnabled']) {
-            //         $this->notifyEvent('booking_confirmation_patient', $clinic, $normalizedPhone, [
-            //             $patientName, $clinic['name'], $formattedDate, $timeSlot, $clinic['contact_address'], $clinic['contact_phone']
-            //         ]);
-            //     }
-            // }
+            // Send WhatsApp alerts via Twilio (non-blocking)
+            try {
+                $clinic = $this->admin_model->getClinicById($this->clinicId, 'name, contact_phone, contact_address, config');
+                if ($clinic) {
+                    $formattedDate = implode('/', array_reverse(explode('-', $date)));
+                    $waMeta = $this->getWhatsappMeta($clinic);
+                    $alertTemplate = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
+                    
+                    if (!empty($waMeta['number'])) {
+                        $this->notifyEvent($alertTemplate, $clinic, $waMeta['number'], [$patientName, $service, $formattedDate, $timeSlotToUse, $normalizedPhone]);
+                    }
+                    
+                    $this->notifyEvent('booking_confirmation_patient', $clinic, $normalizedPhone, [
+                        $patientName, $clinic['name'], $formattedDate, $timeSlotToUse, $clinic['contact_address'], $clinic['contact_phone']
+                    ]);
+                }
+            } catch (\Exception $waEx) {
+                log_message('error', 'Admin booking WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
+            }
 
             $this->jsonResponse(['success' => true, 'appointmentId' => $apptId]);
         } catch (\Exception $e) {
@@ -1274,10 +1311,14 @@ class Admin extends MY_Controller {
                 $this->jsonResponse(['error' => 'Google review link not configured for this clinic'], 400);
                 return;
             }
-            // WhatsApp alerts — disabled for now. Uncomment when WhatsApp sending is ready.
-            // $this->notifyEvent('booking_review_request', $clinic, $appt['patient_phone'], [
-            //     $appt['patient_name'], $clinic['name'], $clinic['google_review_link']
-            // ]);
+            // Send WhatsApp alerts via Twilio (non-blocking)
+            try {
+                $this->notifyEvent('booking_review_request', $clinic, $appt['patient_phone'], [
+                    $appt['patient_name'], $clinic['name'], $reviewLink
+                ]);
+            } catch (\Exception $waEx) {
+                log_message('error', 'Review request WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
+            }
 
             $this->jsonResponse(['success' => true, 'message' => 'Google review request sent successfully']);
         } catch (\Exception $e) {
@@ -2117,7 +2158,8 @@ class Admin extends MY_Controller {
         unset($safe['config']);
         $merged = array_merge($safe, $publicConfig, [
             'visibility_settings' => $visibility,
-            'whatsapp' => $safeWa
+            'whatsapp' => $safeWa,
+            'reviews' => isset($safe['reviews']) ? $safe['reviews'] : []
         ]);
 
         // Bridge flat columns → contact sub-object so frontend reads contact.phone / contact.address / contact.mapEmbedUrl
