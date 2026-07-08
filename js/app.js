@@ -335,6 +335,8 @@ function renderHero() {
     const heroContent = document.getElementById('hero-content');
     const layout = clinicConfig.theme.heroLayout || 'split';
     
+    const firstFramePoster = clinicConfig.hero.heroImage ? clinicConfig.hero.heroImage.substring(0, clinicConfig.hero.heroImage.lastIndexOf('/')) + '/hero_img.png' : '/uploads/assets/clinic_001/hero/hero_img.png';
+
     // Trust stats row shared across layouts
     const statsHTML = (dark = false) => `
         <div class="stats-bar ${dark ? 'stats-bar-dark' : ''} hero-reveal hero-reveal-delay-4 mt-2">
@@ -355,7 +357,7 @@ function renderHero() {
           ? `<video 
                src="${assetUrl(clinicConfig.hero.heroVideo)}"
                autoplay muted loop playsinline
-               poster="${assetUrl(clinicConfig.hero.heroImage)}"
+               poster="${assetUrl(firstFramePoster)}"
                class="w-full h-[350px] sm:h-[480px] object-cover">
                <img src="${assetUrl(clinicConfig.hero.heroImage)}" 
                     class="w-full h-[350px] sm:h-[480px] object-cover">
@@ -458,9 +460,10 @@ function renderHero() {
         `;
     } else if (layout === 'journey') {
         const steps = clinicConfig.hero.journeySteps || [];
-        const bgMedia = clinicConfig.hero.heroVideo
-          ? `<video class="hero-journey-video" src="${assetUrl(clinicConfig.hero.heroVideo)}" autoplay muted loop playsinline></video>`
-          : ``; // no video = pure dark background, no static fallback
+        let bgMedia = '';
+        if (clinicConfig.hero.heroVideo) {
+            bgMedia = `<video class="hero-journey-video" src="${assetUrl(clinicConfig.hero.heroVideo)}" autoplay muted loop playsinline poster="${assetUrl(firstFramePoster)}"></video>`;
+        }
 
         html = `
             ${bgMedia}
