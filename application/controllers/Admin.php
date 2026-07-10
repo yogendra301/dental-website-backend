@@ -650,7 +650,14 @@ class Admin extends MY_Controller
             'show_whatsapp_fab' => false,
             'show_working_hours' => true,
             'show_doctor_section' => true,
-            'show_google_review_btn' => false
+            'show_google_review_btn' => false,
+            'admin_show_dashboard' => true,
+            'admin_show_history' => true,
+            'admin_show_followups' => true,
+            'admin_show_leads' => true,
+            'admin_show_reports' => true,
+            'admin_show_gallery' => true,
+            'admin_show_clinic_config' => true
         ];
 
         $data = [
