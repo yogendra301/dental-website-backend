@@ -19,6 +19,7 @@ $route['api/auth/change-password']['PATCH'] = 'admin/change_password';
 // Clinic routes
 $route['api/clinics']['POST'] = 'admin/list_clinics';
 $route['api/clinics/resolve']['GET'] = 'admin/resolve_clinic';
+$route['api/clinics/settings']['GET'] = 'admin/get_settings';
 $route['api/clinics/settings']['PATCH'] = 'admin/update_settings';
 $route['api/clinics/(:num)/whatsapp/connect']['POST'] = 'admin/whatsapp_connect/$1';
 $route['api/clinics/(:num)/whatsapp/disconnect']['POST'] = 'admin/whatsapp_disconnect/$1';
@@ -30,20 +31,20 @@ $route['api/super/clinics/(:num)']['get'] = 'admin/get_clinic_full/$1';
 $route['api/super/clinics/(:num)']['patch'] = 'admin/update_clinic_full/$1';
 
 // Appointment routes — literals BEFORE wildcards
-$route['api/appointments/lookup']['GET']                 = 'admin/lookup_appointments';
-$route['api/appointments/history']['GET']                = 'admin/get_appointment_history';
-$route['api/appointments/followups']['GET']              = 'admin/get_followups';
-$route['api/appointments/admin']['POST']                 = 'admin/create_admin_appointment';
-$route['api/appointments/(:num)/reschedule']['PATCH']    = 'admin/reschedule_appointment/$1';
-$route['api/appointments/(:num)/cancel']['PATCH']        = 'admin/cancel_appointment/$1';
-$route['api/appointments/(:num)/complete']['PATCH']      = 'admin/complete_appointment/$1';
+$route['api/appointments/lookup']['GET'] = 'admin/lookup_appointments';
+$route['api/appointments/history']['GET'] = 'admin/get_appointment_history';
+$route['api/appointments/followups']['GET'] = 'admin/get_followups';
+$route['api/appointments/admin']['POST'] = 'admin/create_admin_appointment';
+$route['api/appointments/(:num)/reschedule']['PATCH'] = 'admin/reschedule_appointment/$1';
+$route['api/appointments/(:num)/cancel']['PATCH'] = 'admin/cancel_appointment/$1';
+$route['api/appointments/(:num)/complete']['PATCH'] = 'admin/complete_appointment/$1';
 $route['api/appointments/(:num)/followup-done']['PATCH'] = 'admin/followup_done/$1';
-$route['api/appointments/(:num)/no-show']['PATCH']       = 'admin/no_show_appointment/$1';
+$route['api/appointments/(:num)/no-show']['PATCH'] = 'admin/no_show_appointment/$1';
 $route['api/appointments/(:num)/request-review']['POST'] = 'admin/request_review/$1';
-$route['api/appointments/(:num)']['PATCH']               = 'admin/update_appointment/$1';
-$route['api/appointments/(:num)']['DELETE']              = 'admin/delete_appointment/$1';
-$route['api/appointments']['GET']                        = 'admin/get_appointments';
-$route['api/appointments']['POST']                       = 'admin/create_appointment';
+$route['api/appointments/(:num)']['PATCH'] = 'admin/update_appointment/$1';
+$route['api/appointments/(:num)']['DELETE'] = 'admin/delete_appointment/$1';
+$route['api/appointments']['GET'] = 'admin/get_appointments';
+$route['api/appointments']['POST'] = 'admin/create_appointment';
 
 // Slot routes
 $route['api/slots/availability']['GET'] = 'admin/get_available_slots';

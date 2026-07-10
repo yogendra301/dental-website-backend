@@ -4,9 +4,11 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 
-class Admin extends MY_Controller {
+class Admin extends MY_Controller
+{
 
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct();
         $this->load->model('admin_model');
         $this->load->driver('cache');
@@ -19,11 +21,12 @@ class Admin extends MY_Controller {
     /**
      * POST /api/auth/login
      */
-    public function login() {
+    public function login()
+    {
         $input = $this->getJsonInput();
         $username = isset($input['username']) ? trim($input['username']) : '';
         $password = isset($input['password']) ? $input['password'] : '';
-        $rememberMe = isset($input['rememberMe']) ? (bool)$input['rememberMe'] : false;
+        $rememberMe = isset($input['rememberMe']) ? (bool) $input['rememberMe'] : false;
 
         if (empty($username) || empty($password)) {
             $this->jsonResponse(['error' => 'Username and password are required'], 400);
@@ -38,7 +41,7 @@ class Admin extends MY_Controller {
 
         $expiresIn = $rememberMe ? 30 * 24 * 3600 : 12 * 3600;
         $token = JWT::encode([
-            'clinicId' => (int)$clinic['id'],
+            'clinicId' => (int) $clinic['id'],
             'username' => $clinic['username'],
             'role' => 'admin',
             'iat' => time(),
@@ -48,7 +51,7 @@ class Admin extends MY_Controller {
         $this->jsonResponse([
             'token' => $token,
             'clinic' => [
-                'id' => (int)$clinic['id'],
+                'id' => (int) $clinic['id'],
                 'name' => $clinic['name'],
                 'username' => $clinic['username']
             ]
@@ -61,20 +64,23 @@ class Admin extends MY_Controller {
     // Pattern: every super endpoint calls this instead of inline checks.
     // This ensures auth never breaks regardless of how JS sends the password.
     // ============================================================
-    private function _requireSuperAdmin() {
+    private function _requireSuperAdmin()
+    {
         $expected = getenv('SUPER_ADMIN_PASSWORD');
 
         // 1. Check Authorization: Bearer header (used by config panel)
         $authHeader = $this->input->get_request_header('Authorization', TRUE);
         if ($authHeader) {
             $bearer = str_replace('Bearer ', '', $authHeader);
-            if ($bearer === $expected) return true;
+            if ($bearer === $expected)
+                return true;
         }
 
         // 2. Fallback: check body field (used by list_clinics / super-login)
         $input = $this->getJsonInput();
         $bodyPwd = isset($input['superPassword']) ? $input['superPassword'] : '';
-        if ($bodyPwd === $expected) return true;
+        if ($bodyPwd === $expected)
+            return true;
 
         $this->jsonResponse(['error' => 'Unauthorized'], 401);
         $this->output->_display();
@@ -85,8 +91,10 @@ class Admin extends MY_Controller {
      * POST /api/auth/super-login
      * Super admin impersonates a clinic — returns real JWT
      */
-    public function super_login() {
-        if (!$this->_requireSuperAdmin()) return;
+    public function super_login()
+    {
+        if (!$this->_requireSuperAdmin())
+            return;
         $input = $this->getJsonInput();
         $username = isset($input['username']) ? trim($input['username']) : '';
 
@@ -97,7 +105,7 @@ class Admin extends MY_Controller {
         }
 
         $token = JWT::encode([
-            'clinicId' => (int)$clinic['id'],
+            'clinicId' => (int) $clinic['id'],
             'username' => $clinic['username'],
             'role' => 'admin',
             'iat' => time(),
@@ -106,7 +114,7 @@ class Admin extends MY_Controller {
 
         $this->jsonResponse([
             'token' => $token,
-            'clinic' => ['id' => (int)$clinic['id'], 'name' => $clinic['name'], 'username' => $clinic['username']]
+            'clinic' => ['id' => (int) $clinic['id'], 'name' => $clinic['name'], 'username' => $clinic['username']]
         ]);
     }
 
@@ -114,8 +122,10 @@ class Admin extends MY_Controller {
      * POST /api/clinics
      * List all clinics — super admin only via POST body
      */
-    public function list_clinics() {
-        if (!$this->_requireSuperAdmin()) return;
+    public function list_clinics()
+    {
+        if (!$this->_requireSuperAdmin())
+            return;
         $clinics = $this->admin_model->getAllClinics();
         $this->jsonResponse($clinics);
     }
@@ -123,7 +133,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/auth/doctor-login
      */
-    public function doctor_login() {
+    public function doctor_login()
+    {
         $input = $this->getJsonInput();
         $username = isset($input['username']) ? trim($input['username']) : '';
         $pin = isset($input['pin']) ? $input['pin'] : '';
@@ -150,7 +161,7 @@ class Admin extends MY_Controller {
         }
 
         $token = JWT::encode([
-            'clinicId' => (int)$clinic['id'],
+            'clinicId' => (int) $clinic['id'],
             'username' => $clinic['username'],
             'role' => 'doctor',
             'iat' => time(),
@@ -160,7 +171,7 @@ class Admin extends MY_Controller {
         $this->jsonResponse([
             'token' => $token,
             'clinic' => [
-                'id' => (int)$clinic['id'],
+                'id' => (int) $clinic['id'],
                 'name' => $clinic['name'],
                 'username' => $clinic['username']
             ]
@@ -170,7 +181,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/auth/forgot-password
      */
-    public function forgot_password() {
+    public function forgot_password()
+    {
         $input = $this->getJsonInput();
         $username = isset($input['username']) ? trim($input['username']) : '';
 
@@ -198,9 +210,9 @@ class Admin extends MY_Controller {
         // Send OTP via email instead of WhatsApp
         $subject = 'Password Reset OTP - ' . $clinic['name'];
         $body = '<h2>Password Reset Request</h2>'
-              . '<p>Your OTP for password reset is: <strong>' . $otp . '</strong></p>'
-              . '<p>This OTP is valid for 10 minutes.</p>'
-              . '<p>If you did not request this, please ignore this email.</p>';
+            . '<p>Your OTP for password reset is: <strong>' . $otp . '</strong></p>'
+            . '<p>This OTP is valid for 10 minutes.</p>'
+            . '<p>If you did not request this, please ignore this email.</p>';
 
         if (!empty($clinic['admin_email'])) {
             $this->sendEmail(
@@ -215,7 +227,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/auth/reset-password
      */
-    public function reset_password() {
+    public function reset_password()
+    {
         $input = $this->getJsonInput();
         $username = isset($input['username']) ? trim($input['username']) : '';
         $otp = isset($input['otp']) ? $input['otp'] : '';
@@ -255,7 +268,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/auth/change-password
      */
-    public function change_password() {
+    public function change_password()
+    {
         $this->authenticate();
 
         $input = $this->getJsonInput();
@@ -291,16 +305,17 @@ class Admin extends MY_Controller {
     /**
      * GET /api/clinics/resolve
      */
-    public function resolve_clinic() {
+    public function resolve_clinic()
+    {
         $host = isset($_GET['host']) ? trim(explode(':', $_GET['host'])[0]) : 'localhost';
         $host = strtolower($host);
 
         // Dev fallback
         $isLocal = in_array($host, ['localhost', '127.0.0.1']) ||
-                   strpos($host, '192.168.') === 0 ||
-                   strpos($host, '10.') === 0 ||
-                   strpos($host, '172.') === 0 ||
-                   substr($host, -6) === '.local';
+            strpos($host, '192.168.') === 0 ||
+            strpos($host, '10.') === 0 ||
+            strpos($host, '172.') === 0 ||
+            substr($host, -6) === '.local';
 
         try {
             $clinic = null;
@@ -331,7 +346,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/clinics/:username
      */
-    public function get_clinic($username) {
+    public function get_clinic($username)
+    {
         $clinic = $this->admin_model->getClinicByUsername($username);
         if (!$clinic) {
             $this->jsonResponse(['error' => 'Clinic not found'], 404);
@@ -341,9 +357,46 @@ class Admin extends MY_Controller {
     }
 
     /**
+     * GET /api/clinics/settings
+     */
+    public function get_settings()
+    {
+        $this->authenticate();
+        $this->requireRole('admin');
+
+        $clinic = $this->admin_model->getClinicById($this->clinicId);
+        if (!$clinic) {
+            $this->jsonResponse(['error' => 'Clinic not found'], 404);
+            return;
+        }
+
+        $config = $this->admin_model->parseJsonField($clinic['config']);
+        
+        $response = [
+            'id' => $clinic['id'],
+            'username' => $clinic['username'],
+            'name' => $clinic['name'],
+            'slug' => $clinic['username'],
+            'custom_domain' => $clinic['custom_domain'],
+            'admin_email' => $clinic['admin_email'],
+            'package' => isset($clinic['package']) ? (int)$clinic['package'] : 3,
+            'contact_phone' => $clinic['contact_phone'],
+            'contact_address' => $clinic['contact_address'],
+            'contact_map_url' => $clinic['contact_map_url'],
+            'google_review_link' => $clinic['google_review_link'],
+            'working_hours' => $this->admin_model->parseJsonField($clinic['working_hours']),
+            'reviews' => $this->admin_model->parseJsonField($clinic['reviews']),
+            'config' => $config
+        ];
+
+        $this->jsonResponse($response);
+    }
+
+    /**
      * PATCH /api/clinics/settings
      */
-    public function update_settings() {
+    public function update_settings()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -365,7 +418,7 @@ class Admin extends MY_Controller {
                 preg_match('/src=["\']([^"\']+)["\']/', $mapEmbedUrl, $m);
                 $mapEmbedUrl = isset($m[1]) ? $m[1] : '';
             }
-            
+
             // Validate URL pattern
             if (!preg_match('/(google\.com\/maps|maps\.app\.goo\.gl)/', $mapEmbedUrl)) {
                 $this->jsonResponse(['error' => 'Invalid Google Maps URL format'], 400);
@@ -374,11 +427,14 @@ class Admin extends MY_Controller {
         }
 
         // Update config fields
-        if (isset($input['name'])) $currentConfig['name'] = $input['name'];
-        if (isset($input['google_review_link'])) $currentConfig['google_review_link'] = $input['google_review_link'];
+        if (isset($input['name']))
+            $currentConfig['name'] = $input['name'];
+        if (isset($input['google_review_link']))
+            $currentConfig['google_review_link'] = $input['google_review_link'];
 
         // Map embed URL
-        if (!isset($currentConfig['contact'])) $currentConfig['contact'] = [];
+        if (!isset($currentConfig['contact']))
+            $currentConfig['contact'] = [];
         if ($mapEmbedUrl !== null) {
             $currentConfig['contact']['mapEmbedUrl'] = $mapEmbedUrl;
         }
@@ -437,9 +493,11 @@ class Admin extends MY_Controller {
         $this->jsonResponse(['success' => true, 'message' => 'Settings updated successfully']);
     }
 
-    public function get_clinic_full($id) {
-        if (!$this->_requireSuperAdmin()) return;
-        $clinic = $this->admin_model->getClinicById((int)$id);
+    public function get_clinic_full($id)
+    {
+        if (!$this->_requireSuperAdmin())
+            return;
+        $clinic = $this->admin_model->getClinicById((int) $id);
         if (!$clinic) {
             $this->jsonResponse(['error' => 'Clinic not found'], 404);
             return;
@@ -451,10 +509,12 @@ class Admin extends MY_Controller {
         $this->jsonResponse($clinic);
     }
 
-    public function update_clinic_full($id) {
-        if (!$this->_requireSuperAdmin()) return;
+    public function update_clinic_full($id)
+    {
+        if (!$this->_requireSuperAdmin())
+            return;
         $input = $this->getJsonInput();
-        $clinic = $this->admin_model->getClinicById((int)$id, 'id, config');
+        $clinic = $this->admin_model->getClinicById((int) $id, 'id, config');
         if (!$clinic) {
             $this->jsonResponse(['error' => 'Clinic not found'], 404);
             return;
@@ -463,16 +523,28 @@ class Admin extends MY_Controller {
         $config = $this->admin_model->parseJsonField($clinic['config']);
 
         // Config JSON sub-keys — all future customizable fields go here
-        $configKeys = ['theme', 'hero', 'doctors', 'tagline', 'logo',
-                       'google_review_link', 'whatsapp', 'contact', 'super_admin_only'];
+        $configKeys = [
+            'theme',
+            'hero',
+            'doctors',
+            'tagline',
+            'logo',
+            'google_review_link',
+            'whatsapp',
+            'contact',
+            'super_admin_only'
+        ];
         // Keys where incoming value fully replaces (arrays like doctors[], stats[], journeySteps[])
         $replaceKeys = ['doctors', 'reviews'];
         foreach ($configKeys as $key) {
-            if (!array_key_exists($key, $input)) continue;
+            if (!array_key_exists($key, $input))
+                continue;
             // Shallow merge for scalar-keyed objects (theme, hero top-level fields)
             // Full replace for indexed arrays so removed items don't ghost
-            if (is_array($input[$key]) && isset($config[$key]) && is_array($config[$key])
-                && !in_array($key, $replaceKeys) && array_keys($input[$key]) !== range(0, count($input[$key]) - 1)) {
+            if (
+                is_array($input[$key]) && isset($config[$key]) && is_array($config[$key])
+                && !in_array($key, $replaceKeys) && array_keys($input[$key]) !== range(0, count($input[$key]) - 1)
+            ) {
                 $config[$key] = array_replace($config[$key], $input[$key]);
             } else {
                 $config[$key] = $input[$key];
@@ -480,9 +552,17 @@ class Admin extends MY_Controller {
         }
 
         // Flat column whitelist — never allow clinic_id / hashes through here
-        $flatFields = ['name', 'contact_phone', 'contact_address', 'contact_map_url',
-                       'admin_email', 'slot_duration_min', 'slot_mode', 'custom_domain',
-                       'google_review_link'];
+        $flatFields = [
+            'name',
+            'contact_phone',
+            'contact_address',
+            'contact_map_url',
+            'admin_email',
+            'slot_duration_min',
+            'slot_mode',
+            'custom_domain',
+            'google_review_link'
+        ];
         $updateData = ['config' => json_encode($config)];
         foreach ($flatFields as $field) {
             if (array_key_exists($field, $input)) {
@@ -502,7 +582,7 @@ class Admin extends MY_Controller {
             $updateData['admin_password_hash'] = password_hash($input['admin_password'], PASSWORD_BCRYPT);
         }
 
-        $this->admin_model->updateClinic((int)$id, $updateData);
+        $this->admin_model->updateClinic((int) $id, $updateData);
         $this->jsonResponse(['success' => true]);
     }
 
@@ -510,19 +590,22 @@ class Admin extends MY_Controller {
      * POST /api/super/clinics/create
      * Super admin creates a new clinic — clones config from clinic_001 and copies asset folders
      */
-    public function create_clinic() {
-        if (!$this->_requireSuperAdmin()) return;
+    public function create_clinic()
+    {
+        if (!$this->_requireSuperAdmin())
+            return;
         $input = $this->getJsonInput();
 
         // Validate required fields
         $password = trim($input['admin_password'] ?? $input['password'] ?? ''); // accept both field names
         if (!$password) {
-            $this->jsonResponse(['error' => 'password required'], 400); return;
+            $this->jsonResponse(['error' => 'password required'], 400);
+            return;
         }
 
         // Auto-generate slug: clinic_002, clinic_003, etc.
         $row = $this->db->query("SELECT username FROM clinics WHERE username REGEXP '^clinic_[0-9]+$' ORDER BY CAST(SUBSTRING(username, 8) AS UNSIGNED) DESC LIMIT 1")->row_array();
-        $nextNum = $row ? ((int)substr($row['username'], 7) + 1) : 2;
+        $nextNum = $row ? ((int) substr($row['username'], 7) + 1) : 2;
         $username = 'clinic_' . str_pad($nextNum, 3, '0', STR_PAD_LEFT);
 
         // If name not provided, use username
@@ -531,7 +614,7 @@ class Admin extends MY_Controller {
             $name = $username;
         }
 
-        $phone   = $input['contact_phone'] ?? '+91XXXXXXXXXX';
+        $phone = $input['contact_phone'] ?? '+91XXXXXXXXXX';
         $address = $input['contact_address'] ?? 'Address not set';
 
         // Clone config template from clinic_001 by username, swap name/logo references
@@ -541,57 +624,66 @@ class Admin extends MY_Controller {
         // Replace clinic_001 asset paths with new clinic's username
         $configJson = str_replace('clinic_001', $username, json_encode($config));
         $config = json_decode($configJson, true);
-        $config['name']    = $name;
+        $config['name'] = $name;
         $config['tagline'] = $input['tagline'] ?? 'Quality dental care for your family';
-        $config['logo']    = "/uploads/assets/{$username}/logo/logo.png";
+        $config['logo'] = "/uploads/assets/{$username}/logo/logo.png";
 
         // Reset whatsapp to disconnected blank
         $config['whatsapp'] = [
-            'connected' => 0, 'features' => [],
-            'access_token' => '', 'clinicNumber' => $phone,
-            'phone_number_id' => '', 'business_account_id' => '',
+            'connected' => 0,
+            'features' => [],
+            'access_token' => '',
+            'clinicNumber' => $phone,
+            'phone_number_id' => '',
+            'business_account_id' => '',
             'confirmation_enabled' => false
         ];
         $config['super_admin_only'] = false;
         $config['google_review_link'] = '';
 
         $defaultVisibility = [
-            'show_gallery' => true, 'show_pricing' => true, 'show_ratings' => true,
-            'show_lead_form' => true, 'show_stats_bar' => true,
-            'show_whatsapp_fab' => false, 'show_working_hours' => true,
-            'show_doctor_section' => true, 'show_google_review_btn' => false
+            'show_gallery' => true,
+            'show_pricing' => true,
+            'show_ratings' => true,
+            'show_lead_form' => true,
+            'show_stats_bar' => true,
+            'show_whatsapp_fab' => false,
+            'show_working_hours' => true,
+            'show_doctor_section' => true,
+            'show_google_review_btn' => false
         ];
 
         $data = [
-            'username'            => $username,
-            'name'                => $name,
-            'services'            => $template ? json_encode($template['services']) : json_encode([]),
-            'working_hours'       => $template ? json_encode($template['working_hours']) : json_encode([]),
-            'slot_duration_min'   => $template ? (int)($template['slot_duration_min'] ?? 30) : 30,
-            'contact_phone'       => $phone,
-            'contact_address'     => $address,
-            'contact_map_url'     => '',
+            'username' => $username,
+            'name' => $name,
+            'services' => $template ? json_encode($template['services']) : json_encode([]),
+            'working_hours' => $template ? json_encode($template['working_hours']) : json_encode([]),
+            'slot_duration_min' => $template ? (int) ($template['slot_duration_min'] ?? 30) : 30,
+            'contact_phone' => $phone,
+            'contact_address' => $address,
+            'contact_map_url' => '',
             'admin_password_hash' => password_hash($password, PASSWORD_BCRYPT),
-            'admin_email'         => $input['admin_email'] ?? null,
-            'slot_mode'           => $template ? ($template['slot_mode'] ?? 'fixed') : 'fixed',
-            'config'              => json_encode($config),
+            'admin_email' => $input['admin_email'] ?? null,
+            'slot_mode' => $template ? ($template['slot_mode'] ?? 'fixed') : 'fixed',
+            'config' => json_encode($config),
             'visibility_settings' => json_encode($defaultVisibility),
-            'reviews'             => json_encode([]),
+            'reviews' => json_encode([]),
         ];
 
         $newId = $this->admin_model->createClinic($data);
         if (!$newId) {
-            $this->jsonResponse(['error' => 'DB insert failed'], 500); return;
+            $this->jsonResponse(['error' => 'DB insert failed'], 500);
+            return;
         }
 
         // Copy shared asset folders from clinic_001 (logo, steps, services, video, hero)
         // Gallery/docs are clinic-specific — NOT copied
-        $srcBase  = FCPATH . 'uploads/assets/clinic_001';
+        $srcBase = FCPATH . 'uploads/assets/clinic_001';
         if (!is_dir($srcBase)) {
             $this->jsonResponse(['error' => 'Asset source directory missing — run deploy bootstrap: cp -r uploads/assets/clinic_001 uploads/assets/'], 500);
             return;
         }
-        $dstBase  = FCPATH . 'uploads/assets/' . $username;
+        $dstBase = FCPATH . 'uploads/assets/' . $username;
         $copyDirs = ['logo', 'step', 'service', 'video', 'hero', 'doctor'];
         foreach ($copyDirs as $dir) {
             $src = $srcBase . '/' . $dir;
@@ -603,16 +695,20 @@ class Admin extends MY_Controller {
         // Always create gallery dir (empty, ready for uploads)
         foreach (['gallery'] as $dir) {
             $path = $dstBase . '/' . $dir;
-            if (!is_dir($path)) mkdir($path, 0755, true);
+            if (!is_dir($path))
+                mkdir($path, 0755, true);
         }
 
         $this->jsonResponse(['success' => true, 'id' => $newId, 'username' => $username]);
     }
 
-    private function _copyDir($src, $dst) {
-        if (!is_dir($dst)) mkdir($dst, 0755, true);
+    private function _copyDir($src, $dst)
+    {
+        if (!is_dir($dst))
+            mkdir($dst, 0755, true);
         foreach (scandir($src) as $file) {
-            if ($file === '.' || $file === '..') continue;
+            if ($file === '.' || $file === '..')
+                continue;
             $s = $src . '/' . $file;
             $d = $dst . '/' . $file;
             is_dir($s) ? $this->_copyDir($s, $d) : copy($s, $d);
@@ -622,11 +718,12 @@ class Admin extends MY_Controller {
     /**
      * POST /api/clinics/:id/whatsapp/connect
      */
-    public function whatsapp_connect($id) {
+    public function whatsapp_connect($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
-        if ((int)$this->clinicId !== (int)$id) {
+        if ((int) $this->clinicId !== (int) $id) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }
@@ -683,11 +780,12 @@ class Admin extends MY_Controller {
     /**
      * POST /api/clinics/:id/whatsapp/disconnect
      */
-    public function whatsapp_disconnect($id) {
+    public function whatsapp_disconnect($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
-        if ((int)$this->clinicId !== (int)$id) {
+        if ((int) $this->clinicId !== (int) $id) {
             $this->jsonResponse(['error' => 'Forbidden'], 403);
             return;
         }
@@ -716,7 +814,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/appointments
      */
-    public function get_appointments() {
+    public function get_appointments()
+    {
         $this->authenticate();
         $this->requireRole('admin', 'doctor');
 
@@ -735,7 +834,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/appointments (Public booking)
      */
-    public function create_appointment() {
+    public function create_appointment()
+    {
         // Rate limit: 10 req/min per IP (booking spam protection)
         $ip = $_SERVER['REMOTE_ADDR'];
         $key = 'rl_create_apt_' . md5($ip);
@@ -753,7 +853,7 @@ class Admin extends MY_Controller {
         $service = isset($input['service']) ? trim($input['service']) : '';
         $date = isset($input['date']) ? $input['date'] : '';
         $timeSlot = isset($input['time_slot']) ? $input['time_slot'] : '';
-        $isEmergency = isset($input['is_emergency']) ? (int)$input['is_emergency'] : 0;
+        $isEmergency = isset($input['is_emergency']) ? (int) $input['is_emergency'] : 0;
         $problemNote = isset($input['problem_note']) ? $input['problem_note'] : null;
 
         if (empty($clinicUsername) || empty($patientName) || empty($patientPhone) || empty($service) || empty($date) || empty($timeSlot)) {
@@ -806,9 +906,9 @@ class Admin extends MY_Controller {
             ]);
             // Send WhatsApp alerts via Twilio (non-blocking — failure won't fail the booking)
             try {
-                $formattedDate  = implode('/', array_reverse(explode('-', $date)));
-                $alertTemplate  = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
-                $waMeta         = $this->getWhatsappMeta($clinic);
+                $formattedDate = implode('/', array_reverse(explode('-', $date)));
+                $alertTemplate = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
+                $waMeta = $this->getWhatsappMeta($clinic);
 
                 // Always notify the clinic owner on their registered number
                 if (!empty($waMeta['number'])) {
@@ -826,8 +926,14 @@ class Admin extends MY_Controller {
                         'booking_confirmation_patient',
                         $clinic,
                         $normalizedPhone,
-                        [$patientName, $clinic['name'], $formattedDate, $timeSlot,
-                         $clinic['contact_address'], $clinic['contact_phone']]
+                        [
+                            $patientName,
+                            $clinic['name'],
+                            $formattedDate,
+                            $timeSlot,
+                            $clinic['contact_address'],
+                            $clinic['contact_phone']
+                        ]
                     );
                 }
             } catch (\Exception $waEx) {
@@ -848,7 +954,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/appointments/lookup (Public)
      */
-    public function lookup_appointments() {
+    public function lookup_appointments()
+    {
         // Rate limit: 20 req/min per IP
         $ip = $_SERVER['REMOTE_ADDR'];
         $key = 'rl_lookup_apt_' . md5($ip);
@@ -885,7 +992,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/appointments/:id/reschedule (Public)
      */
-    public function reschedule_appointment($id) {
+    public function reschedule_appointment($id)
+    {
         $input = $this->getJsonInput();
         $clinicUsername = isset($input['clinic_username']) ? trim($input['clinic_username']) : '';
         $phone = isset($input['phone']) ? trim($input['phone']) : '';
@@ -937,15 +1045,23 @@ class Admin extends MY_Controller {
                 $formattedNewDate = implode('/', array_reverse(explode('-', $newDate)));
                 $formattedOldDate = date('d/m/Y', strtotime($appt['date']));
                 $waMeta = $this->getWhatsappMeta($clinic);
-                
+
                 $this->notifyEvent('booking_reschedule_patient', $clinic, $normalizedPhone, [
-                    $appt['patient_name'], $clinic['name'], $formattedNewDate, $newTimeSlot
+                    $appt['patient_name'],
+                    $clinic['name'],
+                    $formattedNewDate,
+                    $newTimeSlot
                 ]);
-                
+
                 if (!empty($waMeta['number'])) {
                     $this->notifyEvent('booking_reschedule_owner', $clinic, $waMeta['number'], [
-                        $appt['patient_name'], $appt['service'], $formattedOldDate, $appt['time_slot'],
-                        $formattedNewDate, $newTimeSlot, $normalizedPhone
+                        $appt['patient_name'],
+                        $appt['service'],
+                        $formattedOldDate,
+                        $appt['time_slot'],
+                        $formattedNewDate,
+                        $newTimeSlot,
+                        $normalizedPhone
                     ]);
                 }
             } catch (\Exception $waEx) {
@@ -962,7 +1078,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/appointments/:id/cancel (Public)
      */
-    public function cancel_appointment($id) {
+    public function cancel_appointment($id)
+    {
         $input = $this->getJsonInput();
         $clinicUsername = isset($input['clinic_username']) ? trim($input['clinic_username']) : '';
         $phone = isset($input['phone']) ? trim($input['phone']) : '';
@@ -994,7 +1111,11 @@ class Admin extends MY_Controller {
                 $waMeta = $this->getWhatsappMeta($clinic);
                 if (!empty($waMeta['number'])) {
                     $this->notifyEvent('booking_cancel_owner', $clinic, $waMeta['number'], [
-                        $appt['patient_name'], $appt['service'], $formattedDate, $appt['time_slot'], $normalizedPhone
+                        $appt['patient_name'],
+                        $appt['service'],
+                        $formattedDate,
+                        $appt['time_slot'],
+                        $normalizedPhone
                     ]);
                 }
             } catch (\Exception $waEx) {
@@ -1011,7 +1132,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/appointments/admin (Protected admin booking)
      */
-    public function create_admin_appointment() {
+    public function create_admin_appointment()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1021,7 +1143,7 @@ class Admin extends MY_Controller {
         $service = isset($input['service']) ? trim($input['service']) : '';
         $date = isset($input['date']) ? $input['date'] : '';
         $timeSlot = isset($input['time_slot']) ? $input['time_slot'] : '';
-        $isEmergency = isset($input['is_emergency']) ? (int)$input['is_emergency'] : 0;
+        $isEmergency = isset($input['is_emergency']) ? (int) $input['is_emergency'] : 0;
         $problemNote = isset($input['problem_note']) ? $input['problem_note'] : null;
         $source = isset($input['source']) ? $input['source'] : 'phone';
 
@@ -1037,9 +1159,9 @@ class Admin extends MY_Controller {
         try {
             if ($isWalkin) {
                 // Walk-in: find nearest available slot
-                $slotDurationMin = (int)($this->admin_model->getClinicById($this->clinicId, 'slot_duration_min')['slot_duration_min'] ?? 30);
+                $slotDurationMin = (int) ($this->admin_model->getClinicById($this->clinicId, 'slot_duration_min')['slot_duration_min'] ?? 30);
                 $now = new \DateTime();
-                $totalMin = (int)$now->format('H') * 60 + (int)$now->format('i');
+                $totalMin = (int) $now->format('H') * 60 + (int) $now->format('i');
                 $rounded = round($totalMin / 5) * 5;
                 $attempts = 0;
                 $found = false;
@@ -1101,13 +1223,18 @@ class Admin extends MY_Controller {
                     $formattedDate = implode('/', array_reverse(explode('-', $date)));
                     $waMeta = $this->getWhatsappMeta($clinic);
                     $alertTemplate = $isEmergency ? 'booking_alert_owner_emergency' : 'booking_alert_owner';
-                    
+
                     if (!empty($waMeta['number'])) {
                         $this->notifyEvent($alertTemplate, $clinic, $waMeta['number'], [$patientName, $service, $formattedDate, $timeSlotToUse, $normalizedPhone]);
                     }
-                    
+
                     $this->notifyEvent('booking_confirmation_patient', $clinic, $normalizedPhone, [
-                        $patientName, $clinic['name'], $formattedDate, $timeSlotToUse, $clinic['contact_address'], $clinic['contact_phone']
+                        $patientName,
+                        $clinic['name'],
+                        $formattedDate,
+                        $timeSlotToUse,
+                        $clinic['contact_address'],
+                        $clinic['contact_phone']
                     ]);
                 }
             } catch (\Exception $waEx) {
@@ -1128,7 +1255,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/appointments/history (Protected admin)
      */
-    public function get_appointment_history() {
+    public function get_appointment_history()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1152,7 +1280,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/appointments/followups (Protected admin)
      */
-    public function get_followups() {
+    public function get_followups()
+    {
         $this->authenticate();
         $this->requireRole('admin');
         $rows = $this->admin_model->getFollowups($this->clinicId);
@@ -1162,29 +1291,34 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/appointments/:id/followup-done (Protected admin)
      */
-    public function followup_done($id) {
+    public function followup_done($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
         $ok = $this->admin_model->markFollowupDone($id, $this->clinicId);
-        if (!$ok) return $this->jsonResponse(['error' => 'Not found'], 404);
+        if (!$ok)
+            return $this->jsonResponse(['error' => 'Not found'], 404);
         $this->jsonResponse(['success' => true]);
     }
 
     /**
      * PATCH /api/appointments/:id/no-show (Protected admin)
      */
-    public function no_show_appointment($id) {
+    public function no_show_appointment($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
         $ok = $this->admin_model->update_appointment_status($id, $this->clinicId, 'no_show');
-        if (!$ok) return $this->jsonResponse(['error' => 'Not found'], 404);
+        if (!$ok)
+            return $this->jsonResponse(['error' => 'Not found'], 404);
         $this->jsonResponse(['success' => true]);
     }
 
     /**
      * DELETE /api/appointments/:id (Protected admin cancellation)
      */
-    public function delete_appointment($id) {
+    public function delete_appointment($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1204,7 +1338,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/appointments/:id (Protected admin update)
      */
-    public function update_appointment($id) {
+    public function update_appointment($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1228,7 +1363,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/appointments/:id/complete (Protected admin complete visit)
      */
-    public function complete_appointment($id) {
+    public function complete_appointment($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1238,9 +1374,9 @@ class Admin extends MY_Controller {
         $medicinesInstructions = isset($input['medicines_instructions']) ? $input['medicines_instructions'] : null;
         $followUpDate = isset($input['follow_up_date']) ? $input['follow_up_date'] : null;
         $followUpNote = isset($input['follow_up_note']) ? $input['follow_up_note'] : null;
-        $treatmentCost = isset($input['treatment_cost']) ? (float)$input['treatment_cost'] : 0;
-        $discount = isset($input['discount']) ? (float)$input['discount'] : 0;
-        $amountPaid = isset($input['amount_paid']) ? (float)$input['amount_paid'] : 0;
+        $treatmentCost = isset($input['treatment_cost']) ? (float) $input['treatment_cost'] : 0;
+        $discount = isset($input['discount']) ? (float) $input['discount'] : 0;
+        $amountPaid = isset($input['amount_paid']) ? (float) $input['amount_paid'] : 0;
         $paymentMethod = isset($input['payment_method']) ? $input['payment_method'] : null;
 
         // Compute payment status
@@ -1285,7 +1421,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/appointments/:id/request-review (Protected admin)
      */
-    public function request_review($id) {
+    public function request_review($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1314,7 +1451,9 @@ class Admin extends MY_Controller {
             // Send WhatsApp alerts via Twilio (non-blocking)
             try {
                 $this->notifyEvent('booking_review_request', $clinic, $appt['patient_phone'], [
-                    $appt['patient_name'], $clinic['name'], $reviewLink
+                    $appt['patient_name'],
+                    $clinic['name'],
+                    $reviewLink
                 ]);
             } catch (\Exception $waEx) {
                 log_message('error', 'Review request WhatsApp notify error (non-fatal): ' . $waEx->getMessage());
@@ -1334,7 +1473,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/slots/available
      */
-    public function get_available_slots() {
+    public function get_available_slots()
+    {
         $clinicUsername = isset($_GET['clinic_username']) ? $_GET['clinic_username'] : '';
         $date = isset($_GET['date']) ? $_GET['date'] : '';
 
@@ -1357,7 +1497,7 @@ class Admin extends MY_Controller {
             }
 
             $dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-            $dayKey = $dayKeys[(int)date('w', strtotime($date))];
+            $dayKey = $dayKeys[(int) date('w', strtotime($date))];
 
             $workingHours = $this->admin_model->parseJsonField($clinic['working_hours']);
             $hours = isset($workingHours[$dayKey]) ? $workingHours[$dayKey] : null;
@@ -1378,7 +1518,8 @@ class Admin extends MY_Controller {
                     if ($decoded->role === 'admin' && $decoded->clinicId == $clinic['id']) {
                         $isAdmin = true;
                     }
-                } catch (\Exception $e) {}
+                } catch (\Exception $e) {
+                }
             }
 
             // Get appointments for the date
@@ -1390,7 +1531,7 @@ class Admin extends MY_Controller {
                 $apptMap[$appt['time_slot']] = [
                     'status' => $status,
                     'patient_name' => $appt['patient_name'],
-                    'is_emergency' => (int)$appt['is_emergency']
+                    'is_emergency' => (int) $appt['is_emergency']
                 ];
             }
 
@@ -1427,7 +1568,7 @@ class Admin extends MY_Controller {
                 // Generate slots from working hours
                 $openTime = \DateTime::createFromFormat('H:i', $hours['open']);
                 $closeTime = \DateTime::createFromFormat('H:i', $hours['close']);
-                $duration = (int)$clinic['slot_duration_min'];
+                $duration = (int) $clinic['slot_duration_min'];
 
                 if ($openTime && $closeTime) {
                     $current = clone $openTime;
@@ -1462,7 +1603,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/slots/block (Protected admin)
      */
-    public function block_slot() {
+    public function block_slot()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1494,7 +1636,8 @@ class Admin extends MY_Controller {
     /**
      * DELETE /api/slots/block (Protected admin)
      */
-    public function unblock_slot() {
+    public function unblock_slot()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1524,7 +1667,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/patients/lookup (Public)
      */
-    public function patient_lookup() {
+    public function patient_lookup()
+    {
         // Rate limit: 20 req/min per IP
         $ip = $_SERVER['REMOTE_ADDR'];
         $key = 'rl_patient_' . md5($ip);
@@ -1553,7 +1697,7 @@ class Admin extends MY_Controller {
             $normalizedPhone = $this->normalizePhone($phone);
             $stats = $this->admin_model->getPatientStats($clinic['id'], $normalizedPhone);
 
-            $visits = (int)($stats['visits'] ?? 0);
+            $visits = (int) ($stats['visits'] ?? 0);
             if ($visits === 0) {
                 $this->jsonResponse(['visits' => 0]);
                 return;
@@ -1575,7 +1719,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/patients/search (Protected admin)
      */
-    public function patient_search() {
+    public function patient_search()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1617,7 +1762,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/leads (Public)
      */
-    public function create_lead() {
+    public function create_lead()
+    {
         $input = $this->getJsonInput();
         $clinicUsername = isset($input['clinic_username']) ? trim($input['clinic_username']) : '';
         $name = isset($input['name']) ? trim($input['name']) : '';
@@ -1656,7 +1802,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/leads (Protected admin)
      */
-    public function get_leads() {
+    public function get_leads()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1674,7 +1821,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/leads/:id (Protected admin)
      */
-    public function update_lead($id) {
+    public function update_lead($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1712,7 +1860,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/reports/summary (Protected admin)
      */
-    public function report_summary() {
+    public function report_summary()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1740,9 +1889,10 @@ class Admin extends MY_Controller {
     /**
      * GET /api/gallery
      */
-    public function get_gallery() {
+    public function get_gallery()
+    {
         $clinicUsername = isset($_GET['clinic_username']) ? $_GET['clinic_username'] : '';
-        $clinicId = isset($_GET['clinic_id']) ? (int)$_GET['clinic_id'] : 0;
+        $clinicId = isset($_GET['clinic_id']) ? (int) $_GET['clinic_id'] : 0;
 
         try {
             if ($clinicId > 0) {
@@ -1763,7 +1913,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/gallery (Protected admin)
      */
-    public function upload_gallery() {
+    public function upload_gallery()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1813,7 +1964,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/gallery/before-after (Protected admin)
      */
-    public function upload_before_after() {
+    public function upload_before_after()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1822,8 +1974,10 @@ class Admin extends MY_Controller {
         $beforeFile = isset($_FILES['before_image']) ? $_FILES['before_image'] : null;
         $afterFile = isset($_FILES['after_image']) ? $_FILES['after_image'] : null;
 
-        if (!$beforeFile || $beforeFile['error'] !== UPLOAD_ERR_OK ||
-            !$afterFile || $afterFile['error'] !== UPLOAD_ERR_OK) {
+        if (
+            !$beforeFile || $beforeFile['error'] !== UPLOAD_ERR_OK ||
+            !$afterFile || $afterFile['error'] !== UPLOAD_ERR_OK
+        ) {
             $this->jsonResponse(['error' => 'Both before and after images are required'], 400);
             return;
         }
@@ -1866,7 +2020,8 @@ class Admin extends MY_Controller {
     /**
      * DELETE /api/gallery/:id (Protected admin)
      */
-    public function delete_gallery($id) {
+    public function delete_gallery($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1899,7 +2054,8 @@ class Admin extends MY_Controller {
     /**
      * PATCH /api/gallery/:id/caption (Protected admin)
      */
-    public function update_gallery_caption($id) {
+    public function update_gallery_caption($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1922,7 +2078,8 @@ class Admin extends MY_Controller {
      * type param → subfolder: logo|hero|video|doctor|step|service
      * Returns { url: '/uploads/assets/{slug}/{type}/{filename}' }
      */
-    public function upload_asset() {
+    public function upload_asset()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -1987,7 +2144,8 @@ class Admin extends MY_Controller {
     /**
      * GET /api/documents (Protected admin)
      */
-    public function get_documents() {
+    public function get_documents()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -2011,7 +2169,8 @@ class Admin extends MY_Controller {
     /**
      * POST /api/documents (Protected admin)
      */
-    public function upload_document() {
+    public function upload_document()
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -2046,7 +2205,8 @@ class Admin extends MY_Controller {
             }
 
             $ext = $this->_safeExt($fileMime) ?: 'jpg';
-            if (strtolower($fileMime) === 'application/pdf') $ext = 'pdf';
+            if (strtolower($fileMime) === 'application/pdf')
+                $ext = 'pdf';
             $filename = time() . '-' . bin2hex(random_bytes(8)) . '.' . $ext;
             $destPath = $uploadPath . $filename;
 
@@ -2085,7 +2245,8 @@ class Admin extends MY_Controller {
     /**
      * DELETE /api/documents/:id (Protected admin)
      */
-    public function delete_document($id) {
+    public function delete_document($id)
+    {
         $this->authenticate();
         $this->requireRole('admin');
 
@@ -2117,12 +2278,17 @@ class Admin extends MY_Controller {
     // PRIVATE HELPERS
     // ============================================================
 
-    private function _safeExt($mime) {
+    private function _safeExt($mime)
+    {
         $map = [
-            'image/jpeg' => 'jpg', 'image/png' => 'png',
-            'image/webp' => 'webp', 'image/gif' => 'gif',
-            'video/mp4' => 'mp4', 'video/webm' => 'webm',
-            'video/ogg' => 'ogg', 'application/pdf' => 'pdf'
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/gif' => 'gif',
+            'video/mp4' => 'mp4',
+            'video/webm' => 'webm',
+            'video/ogg' => 'ogg',
+            'application/pdf' => 'pdf'
         ];
         return $map[$mime] ?? null;
     }
@@ -2130,10 +2296,16 @@ class Admin extends MY_Controller {
     /**
      * Sanitize clinic data for public response
      */
-    private function _sanitizeClinic($clinic) {
+    private function _sanitizeClinic($clinic)
+    {
         $sensitiveFields = [
-            'admin_password_hash', 'reset_otp', 'reset_otp_expires', 'doctor_pin_hash',
-            'whatsapp_number', 'whatsapp_confirmation', 'whatsapp_features'
+            'admin_password_hash',
+            'reset_otp',
+            'reset_otp_expires',
+            'doctor_pin_hash',
+            'whatsapp_number',
+            'whatsapp_confirmation',
+            'whatsapp_features'
         ];
 
         $safe = array_diff_key($clinic, array_flip($sensitiveFields));
@@ -2151,8 +2323,17 @@ class Admin extends MY_Controller {
 
         // All config keys that public frontend needs must be listed here.
         // Any new per-clinic config field added to config JSON → add its key here too.
-        $publicConfigKeys = ['name', 'tagline', 'logo', 'theme', 'hero', 'doctors',
-                             'google_review_link', 'contact', 'super_admin_only'];
+        $publicConfigKeys = [
+            'name',
+            'tagline',
+            'logo',
+            'theme',
+            'hero',
+            'doctors',
+            'google_review_link',
+            'contact',
+            'super_admin_only'
+        ];
         $publicConfig = array_intersect_key($config, array_flip($publicConfigKeys));
 
         unset($safe['config']);
@@ -2164,9 +2345,12 @@ class Admin extends MY_Controller {
 
         // Bridge flat columns → contact sub-object so frontend reads contact.phone / contact.address / contact.mapEmbedUrl
         $contact = isset($merged['contact']) && is_array($merged['contact']) ? $merged['contact'] : [];
-        if (!empty($safe['contact_phone']))   $contact['phone']   = $safe['contact_phone'];
-        if (!empty($safe['contact_address'])) $contact['address'] = $safe['contact_address'];
-        if (!empty($safe['contact_map_url'])) $contact['mapEmbedUrl'] = $safe['contact_map_url'];
+        if (!empty($safe['contact_phone']))
+            $contact['phone'] = $safe['contact_phone'];
+        if (!empty($safe['contact_address']))
+            $contact['address'] = $safe['contact_address'];
+        if (!empty($safe['contact_map_url']))
+            $contact['mapEmbedUrl'] = $safe['contact_map_url'];
         $merged['contact'] = $contact;
 
         return $merged;
