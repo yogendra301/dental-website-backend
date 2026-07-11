@@ -1,3 +1,38 @@
+# Task: Implement Patients Dashboard Tab & Local Dev Clinic Switcher & Logo Circle Fit
+
+## Task Details
+
+Implemented three requested features/improvements:
+1. **Local Dev Clinic Switcher**:
+   - Added query parameter `?clinic=username` parsing to `resolve-config.js` to set the session's clinic username easily.
+   - Injected a small floating dev badge switcher in `app.js` visible only on localhost/LAN hosts.
+2. **Logo Circle Fit**:
+   - Replaced `object-contain p-1` image sizing with `object-cover` and removed padding in `admin.html` and `index.html` headers so the clinic logo fills the circular space completely.
+3. **Patients Dashboard Tab**:
+   - Added a new database-driven Patients Overview dashboard tab (first tab position) that only appears for clinics with the `admin_manage_patients` permission enabled.
+   - Shows today's visits count, calendar month visits/new patients stats, monthly revenue vs. pending totals, a top loyal patients table sorted by visits count, and a timeline of recent completed patient activity.
+
+## Files Changed
+
+- `backend/application/models/Admin_model.php`
+- `backend/application/controllers/Admin.php`
+- `backend/application/config/routes.php`
+- `frontend/admin.html`
+- `frontend/index.html`
+- `frontend/js/admin.js`
+- `frontend/js/app.js`
+- `frontend/js/resolve-config.js`
+
+## Functions Implemented/Changed
+
+- `getPatientDashboard` (Admin_model.php): Built single queries combining stats, top patients, and recent activity.
+- `patient_dashboard` (Admin.php): Implemented endpoint `/api/patients/dashboard` returning dashboard stats.
+- `applyPackagePlanUI` (admin.js): Controlled visibility and default tab redirection for the `patients-overview` tab.
+- `switchTab` (admin.js): Wired tab panel change and fetched data via `loadPatientsDashboard()`.
+- `loadPatientsDashboard` (admin.js): Built JS data-binder and populates stat cards and tables.
+
+---
+
 # Task: Fix Clinic Config Update Bugs (Super Admin Panel + Settings Tab)
 
 ## Task Details
@@ -1172,9 +1207,24 @@ Updated service selection in booking widget to display three primary services ("
 - `initLocalStorage()`: Seed data updated with new names and durations.
 - `app.js` service rendering block: Refactored to draw `svc_1`, `svc_5`, and `svc_7` in order and render the 4th slot as a custom dropdown menu card. Added select, click-away, and active highlight behavior listeners.
 
+---
 
+# Task: Implement Robust Token Lifecycle and Expiration Management
 
+## Task Details
+Resolved auth token expiration and credential issues:
+1. Updated frontend login to forward the `rememberMe` checkbox state to the backend login API `/api/auth/login`, allowing correctly generated 30-day tokens instead of defaulting to 12 hours.
+2. Implemented a global `window.fetch` interceptor in `admin.js` to catch any `401 Unauthorized` responses on API calls (excluding the login routes) and automatically clear credentials and redirect the user back to the login screen.
+3. Prioritized `sessionStorage` over `localStorage` when retrieving tokens or clinic usernames to prevent cross-tab session pollution (e.g., leftover persistent token overriding active session token).
+4. Guarded the global 401 interceptor with an active token presence check to prevent multiple parallel api calls from triggering redundant logouts and duplicate alerts.
 
+## Files Changed
+- `c:\xampp\htdocs\dental-website-frontend\js\admin.js`
+- `c:\xampp\htdocs\dental-website-frontend\js\resolve-config.js`
 
-
-
+## Functions Implemented/Changed
+- `window.fetch` (overridden globally to intercept 401s, handle auto-attaching Bearer tokens, and prevent duplicate logout flows)
+- `handleLogin` (updated to send `rememberMe` parameter in JSON request body)
+- `getAuthToken` (prioritized sessionStorage)
+- `getClinicUsername` (prioritized sessionStorage)
+- `resolveClinicConfig` (prioritized sessionStorage)

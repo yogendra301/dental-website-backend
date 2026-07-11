@@ -39,7 +39,7 @@ class Admin extends MY_Controller
             return;
         }
 
-        $expiresIn = $rememberMe ? 30 * 24 * 3600 : 12 * 3600;
+        $expiresIn = $rememberMe ? 30 * 24 * 3600 : 24 * 3600;
         $token = JWT::encode([
             'clinicId' => (int) $clinic['id'],
             'username' => $clinic['username'],
@@ -497,6 +497,15 @@ class Admin extends MY_Controller
             $updateData['reviews'] = json_encode($input['reviews']);
         }
 
+        // Handle config sub-keys (doctors, theme, hero, etc.) for regular admins
+        $configSubKeys = ['theme', 'hero', 'doctors', 'tagline', 'logo', 'whatsapp', 'contact'];
+        foreach ($configSubKeys as $key) {
+            if (isset($input[$key])) {
+                $currentConfig[$key] = $input[$key];
+            }
+        }
+        $updateData['config'] = json_encode($currentConfig);
+
         $this->admin_model->updateClinic($this->clinicId, $updateData);
         $this->jsonResponse(['success' => true, 'message' => 'Settings updated successfully']);
     }
@@ -686,7 +695,7 @@ class Admin extends MY_Controller
             'slot_mode' => $template ? ($template['slot_mode'] ?? 'fixed') : 'fixed',
             'config' => json_encode($config),
             'visibility_settings' => json_encode($defaultVisibility),
-            'reviews' => json_encode([]),
+            'reviews' => $template ? ($template['reviews'] ?? '[]') : '[]',
         ];
 
         $newId = $this->admin_model->createClinic($data);
@@ -695,15 +704,14 @@ class Admin extends MY_Controller
             return;
         }
 
-        // Copy shared asset folders from clinic_001 (logo, steps, services, video, hero)
-        // Gallery/docs are clinic-specific — NOT copied
+        // Copy shared asset folders from clinic_001 (logo, steps, services, video, hero, gallery, doctor)
         $srcBase = FCPATH . 'uploads/assets/clinic_001';
         if (!is_dir($srcBase)) {
             $this->jsonResponse(['error' => 'Asset source directory missing — run deploy bootstrap: cp -r uploads/assets/clinic_001 uploads/assets/'], 500);
             return;
         }
         $dstBase = FCPATH . 'uploads/assets/' . $username;
-        $copyDirs = ['logo', 'step', 'service', 'video', 'hero', 'doctor'];
+        $copyDirs = ['logo', 'step', 'service', 'video', 'hero', 'gallery', 'doctor'];
         foreach ($copyDirs as $dir) {
             $src = $srcBase . '/' . $dir;
             $dst = $dstBase . '/' . $dir;
@@ -711,11 +719,17 @@ class Admin extends MY_Controller
                 $this->_copyDir($src, $dst);
             }
         }
-        // Always create gallery dir (empty, ready for uploads)
-        foreach (['gallery'] as $dir) {
-            $path = $dstBase . '/' . $dir;
-            if (!is_dir($path))
-                mkdir($path, 0755, true);
+
+        // Copy gallery database entries from clinic_001 to new clinic
+        $galleryEntries = $this->db->get_where('gallery', ['clinic_id' => $template['id']])->result_array();
+        foreach ($galleryEntries as $entry) {
+            unset($entry['id']);
+            $entry['clinic_id'] = $newId;
+            // Update image URLs to point to new clinic folder
+            $entry['image_url'] = str_replace('/uploads/assets/clinic_001/', "/uploads/assets/{$username}/", $entry['image_url']);
+            $entry['before_url'] = $entry['before_url'] ? str_replace('/uploads/assets/clinic_001/', "/uploads/assets/{$username}/", $entry['before_url']) : null;
+            $entry['after_url'] = $entry['after_url'] ? str_replace('/uploads/assets/clinic_001/', "/uploads/assets/{$username}/", $entry['after_url']) : null;
+            $this->db->insert('gallery', $entry);
         }
 
         $this->jsonResponse(['success' => true, 'id' => $newId, 'username' => $username]);
@@ -1781,6 +1795,8 @@ class Admin extends MY_Controller
             } catch (\Exception $e2) {
                 log_message('error', 'Patient search fallback error: ' . $e2->getMessage());
                 $this->jsonResponse(['error' => 'Internal server error'], 500);
+            }
+        }
     }
 
     /**

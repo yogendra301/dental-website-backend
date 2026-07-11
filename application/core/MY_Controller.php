@@ -47,6 +47,7 @@ class MY_Controller extends CI_Controller {
             $this->clinicSlug = isset($decoded->slug) ? $decoded->slug : (isset($decoded->username) ? $decoded->username : null);
             $this->role = $decoded->role;
         } catch (\Exception $e) {
+            log_message('error', '[JWT] authenticate() failed: ' . $e->getMessage() . ' | Token prefix: ' . substr($token, 0, 20));
             $this->jsonResponse(['error' => 'Invalid or expired token'], 401);
             $this->output->_display();
             exit;
