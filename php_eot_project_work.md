@@ -1,3 +1,238 @@
+# Task: Fix Clinic Config Update Bugs (Super Admin Panel + Settings Tab)
+
+## Task Details
+
+Deep audit of the full clinic config update flow — from super admin panel and regular settings tab — covering save, fetch, and website reflection. Found and fixed 5 real bugs:
+
+- **A** `Google_review_link` (capital G) in `saveSettings` — PHP reads `google_review_link` (lowercase), so review link was silently never saved from the basic settings tab.
+- **B** `package` missing from `$flatFields` in `update_clinic_full` — package plan changes from super admin were silently dropped.
+- **C** `get_clinic_full` not returning `slug` field — `cfgPopulate` reads `d.slug` but response only had `username`; slug input was always blank.
+- **D** `cfgCollectContact` sent `contact: { mapEmbedUrl }` only — on save, `array_replace` in backend would wipe any other keys (`phone`, `address`) already in `config.contact`. Fixed to spread existing contact first, then override only `mapEmbedUrl`.
+- **E** `get_clinic_full` access_token masking — used `isset($clinic['config']['whatsapp']['access_token'])` without checking that config is an array first (it's already decoded by `_parseClinic`); added `is_array` guard.
+
+## Files Changed
+
+- `backend/application/controllers/Admin.php`
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `update_clinic_full` (Admin.php): Added `package` to `$flatFields`
+- `get_clinic_full` (Admin.php): Added `slug` alias, fixed access_token array guard
+- `saveSettings` (admin.js): Fixed `google_review_link` key casing
+- `cfgCollectContact` (admin.js): Preserved existing `config.contact` keys via spread before overriding `mapEmbedUrl`
+
+---
+
+# Task: Fix Status Undefined Key in getAppointmentsForSlots Query
+
+
+## Task Details
+
+Resolved a PHP warning (`Undefined array key "status"`) encountered in the slots availability API. The query in `getAppointmentsForSlots()` did not request the `status` column, causing a fatal warning output that broke JSON encoding whenever a clinic had valid active appointments (such as the newly inserted sample patients). Added `status` to the SELECT clause.
+
+## Files Changed
+
+- `backend/application/models/Admin_model.php`
+
+## Functions Implemented/Changed
+
+- `getAppointmentsForSlots` (in `backend/application/models/Admin_model.php`): Appended `status` to the SELECT column list.
+
+---
+
+# Task: Resolve Super Admin Impersonation Conflict
+
+## Task Details
+
+Resolved an auth routing issue where logging in as a super admin and choosing an impersonated clinic would redirect the user back to the login screen. This happened because old clinic credentials in `localStorage` took precedence over newly selected clinic credentials in `sessionStorage` during config resolution, leading to a mismatched authorization token (401 error). Wiped any lingering clinic tokens/usernames from storage at the start of `handleLogin()` and `loginAsClinic()` to prevent config namespace conflicts.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `handleLogin`, `loginAsClinic` (in `frontend/js/admin.js`): Added defensive clear steps to reset clinic tokens from both local and session storage when initiating a login.
+
+---
+
+# Task: Enhance Document Print Routine
+
+## Task Details
+
+Optimized the print handler (`window._printDoc`) inside the patient documents modal:
+- **Images**: Opens a transient printable window containing only the target image, waits for it to load, triggers the native browser print dialog, and automatically closes the temporary window upon completion or cancellation.
+- **PDFs**: Dynamically injects a hidden iframe, targets the PDF URL, focuses it, and invokes `iframe.contentWindow.print()` for inline printing without tab redirection.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `_printDoc` (in `frontend/js/admin.js`): Improved print logic flow for PDFs and images.
+
+---
+
+# Task: Implement Document Viewer Endpoint and Stream File Previews
+
+## Task Details
+
+Resolved a backend routing omission where requests to view uploaded patient documents (`/api/documents/view/...`) would result in a `404 override` rendering HTML instead of raw file streams (breaking images and previews). Added a dedicated controller action `view_document` in the backend and registered its GET route. This streams files directly using PHP's `readfile` and matches the correct `Content-Type` safely.
+
+## Files Changed
+
+- `backend/application/config/routes.php`
+- `backend/application/controllers/Admin.php`
+
+## Functions Implemented/Changed
+
+- `view_document` (in `backend/application/controllers/Admin.php`): Streams files from the sanitised uploads directory with correct headers.
+
+---
+
+# Task: Support Patient Documents Management from Patient Cards
+
+## Task Details
+
+Added a dedicated "**Docs**" action button on patient cards in the list to manage and view patient-level documents. This opens a premium Documents Modal showing all uploaded files for the selected patient. The clinic can upload new files (supporting drag-and-drop or select), download existing documents, trigger browser printing, or delete records. This is integrated with the existing backend documents API and incorporates patient-level isolation. Any document attached during the completed visit workflow is automatically consolidated and visible here.
+
+## Files Changed
+
+- `frontend/admin.html`
+- `frontend/js/admin.js`
+- `frontend/js/appointment-card.js`
+
+## Functions Implemented/Changed
+
+- `renderAppointmentCard` (in `frontend/js/appointment-card.js`): Injects the Docs button on patient cards.
+- `showPatientDocumentsModal`, `hidePatientDocumentsModal`, `setupPatientDocsModal`, `loadDocsModalList` (in `frontend/js/admin.js`): Implemented the documents modal controller, populate, print, delete, and file upload stream.
+
+---
+
+# Task: Add Complete Action and Remove Price Display from Service Dropdowns
+
+## Task Details
+
+Added support for marking records as complete or updating their treatment/payment details in patient record management mode. Handled displaying the "**Complete**" button both on the patient cards in the history list and inside the patient detail card when `admin_manage_patients` is enabled. Additionally, removed all price display/bracket values from the service required dropdown option labels across all add/edit modals in the admin panel.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+- `frontend/js/appointment-card.js`
+
+## Functions Implemented/Changed
+
+- `renderAppointmentCard` (in `frontend/js/appointment-card.js`): Injects the Complete action button in patient record management mode.
+- `showDetailModal` (in `frontend/js/admin.js`): Bypasses primary actions hiding in patient record management mode to allow marking complete from the details card.
+- `showAddBookingModal`, `showAddPatientRecordModal`, `showEditPatientRecordModal` (in `frontend/js/admin.js`): Stripped brackets and prices from populated service dropdown lists.
+
+---
+
+# Task: Clear Session Storage Completely on Logout
+
+## Task Details
+
+Resolved a session data leakage issue where session-bound values (specifically the dynamic clinic configuration cache `_cc` and other session parameters) persisted in `sessionStorage` after logging out. Refactored the `clearAuthToken()` routine to invoke `sessionStorage.clear()` upon user logout. This ensures that all clinic and super admin session values are wiped from the browser's memory, preventing stale configurations or credentials from leaking across sequential logins.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `clearAuthToken` (in `frontend/js/admin.js`): Wipes `sessionStorage` completely and cleans authentication keys from `localStorage`.
+
+---
+
+# Task: Support Patient Record Management (CRUD) under History Tab
+
+## Task Details
+
+Implemented a complete CRUD workflow for managing patient records directly within the History panel, tailored specifically for clinics that do not wish to use the scheduling/booking flow. Added a new permission `admin_manage_patients` under the History tab visibility configuration. When enabled:
+- The History panel title transitions to "Patient Records / History", and a new "Add Patient / Record" button is rendered.
+- Creating a patient record utilizes the existing booking modal structure but automatically commits the record in `completed` status directly.
+- The appointment cards rendered in the history list display "Edit" and "Delete" buttons for full CRUD capabilities.
+- The DELETE API is refactored to perform a hard delete of the record (instead of a cancel status update) if the patient management permission is active.
+- Added support in both local/live backend APIs and frontend mock interceptors to support the status payload overrides, patching, and hard deletes.
+
+## Files Changed
+
+- `application/controllers/Admin.php`
+- `application/models/Admin_model.php`
+- `frontend/js/admin.js`
+- `frontend/js/appointment-card.js`
+- `frontend/js/demo-mock.js`
+
+## Functions Implemented/Changed
+
+- `deleteAppointmentHard` (in `application/models/Admin_model.php`): Hard deletes an appointment record from the database.
+- `delete_appointment` (in `application/controllers/Admin.php`): Checks if the `admin_manage_patients` permission is active and executes either a hard delete or a status cancellation.
+- `create_admin_appointment` (in `application/controllers/Admin.php`): Support mapping `status` from payload input.
+- `showAddPatientRecordModal` (in `frontend/js/admin.js`): Configures and displays the booking modal for record addition.
+- `showEditPatientRecordModal` (in `frontend/js/admin.js`): Populates and displays the modal for editing a patient record.
+- `submitPhoneBooking` (in `frontend/js/admin.js`): Dispatches POST/PATCH payload dynamically and handles completed status overrides.
+- `loadHistoryData` (in `frontend/js/admin.js`): Updates header text and injects "Add Patient / Record" button.
+- `renderAppointmentCard` (in `frontend/js/appointment-card.js`): Appends Edit and Delete buttons on cards.
+- Mock interceptors (in `frontend/js/demo-mock.js`): Adapted POST and DELETE interceptors to handle the status overrides and hard deletes.
+
+---
+
+# Task: Resolve Multi-Tenant Config Resolution & Admin Visibility Restrictions
+
+## Task Details
+
+Fixed an issue where visibility settings saved for `clinic_003` were not respected when logged in. During local development (`localhost`), the `/api/clinics/resolve` API automatically fell back to resolving the default clinic `clinic_001`, ignoring the logged-in clinic's configuration. Furthermore, `showDashboard()` did not force a re-resolve of the dynamic configuration upon user session transitions, and the default routing logic switched to the hidden `'history'` tab on page load even when booking features were restricted by the clinic package. Updated the backend resolver to support an optional `slug` parameter to bypass local fallbacks, updated the frontend resolver to pass the logged-in session's clinic username, made `showDashboard()` clear the cache and re-resolve config before loading dashboard assets, and updated the default routing logic to dynamically default to the first visible nav tab. Additionally, updated package plan UI restrictions to bypass hiding tabs/elements (such as History and Patient Search) if they are explicitly enabled in the clinic's custom visibility settings.
+
+## Files Changed
+
+- `application/controllers/Admin.php`
+- `frontend/js/resolve-config.js`
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `resolve_clinic` (in `application/controllers/Admin.php`): Checks and resolves by `slug` parameter first if provided.
+- `resolveClinicConfig` (in `frontend/js/resolve-config.js`): Appends `slug` query parameter using saved session clinic username.
+- `showDashboard` (in `frontend/js/admin.js`): Refactored to be `async`, clears the session storage cache (`_cc`), and calls `resolveClinicConfig()` to ensure correct state load on user transition.
+- `applyPackagePlanUI` (in `frontend/js/admin.js`): Updated default routing to find and switch to the first visible tab, and bypassed package-based tab and search bar hiding if explicitly allowed in settings.
+
+---
+
+# Task: Fix Dashboard Stats Loading Error
+
+## Task Details
+
+Resolved a stats loading error (`Failed to load stats`) on the admin dashboard load. The date input value was empty initially causing an empty date query parameter (`?start=&end=`) to be sent to the backend endpoint `/api/reports/summary`, resulting in a 400 Bad Request error. Fixed this by passing the resolved `date` variable directly and adding a fallback to `getLocalDateString()` in the `loadDashboardStats` function.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `loadDailyData` (updated `loadDashboardStats` call)
+- `loadDashboardStats` (updated signature and added date resolution fallback)
+
+---
+
+# Task: Fix Admin Portal Visibility Settings Not Persisting
+
+## Task Details
+
+Fixed an issue where "Admin Portal Visibility" settings would not reflect or persist in the admin dashboard. The backend `get_settings()` API response whitelisted fields, but completely omitted the `visibility_settings` column, causing the frontend settings panel to load empty/undefined values and overwrite configured visibility.
+
+## Files Changed
+
+- `application/controllers/Admin.php`: Added `visibility_settings` to the response array of the `get_settings` method.
+
+## Functions Implemented/Changed
+
+- `application/controllers/Admin.php`: `get_settings` (updated response whitelist)
+
+---
+
 # Task: Fix Frontend Loading & Network Connectivity Errors
 
 ## Task Details

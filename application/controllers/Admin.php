@@ -309,6 +309,7 @@ class Admin extends MY_Controller
     {
         $host = isset($_GET['host']) ? trim(explode(':', $_GET['host'])[0]) : 'localhost';
         $host = strtolower($host);
+        $slug = isset($_GET['slug']) ? trim($_GET['slug']) : '';
 
         // Dev fallback
         $isLocal = in_array($host, ['localhost', '127.0.0.1']) ||
@@ -319,15 +320,21 @@ class Admin extends MY_Controller
 
         try {
             $clinic = null;
-            if ($isLocal) {
-                $devUsername = getenv('DEV_CLINIC_USERNAME') ?: 'clinic_001';
-                $clinic = $this->admin_model->getClinicByUsername($devUsername);
-            } else {
-                // Try custom domain
-                $clinic = $this->admin_model->getClinicByCustomDomain($host);
-                if (!$clinic) {
-                    $username = explode('.', $host)[0];
-                    $clinic = $this->admin_model->getClinicByUsername($username);
+            if (!empty($slug)) {
+                $clinic = $this->admin_model->getClinicByUsername($slug);
+            }
+
+            if (!$clinic) {
+                if ($isLocal) {
+                    $devUsername = getenv('DEV_CLINIC_USERNAME') ?: 'clinic_001';
+                    $clinic = $this->admin_model->getClinicByUsername($devUsername);
+                } else {
+                    // Try custom domain
+                    $clinic = $this->admin_model->getClinicByCustomDomain($host);
+                    if (!$clinic) {
+                        $username = explode('.', $host)[0];
+                        $clinic = $this->admin_model->getClinicByUsername($username);
+                    }
                 }
             }
 
@@ -386,6 +393,7 @@ class Admin extends MY_Controller
             'google_review_link' => $clinic['google_review_link'],
             'working_hours' => $this->admin_model->parseJsonField($clinic['working_hours']),
             'reviews' => $this->admin_model->parseJsonField($clinic['reviews']),
+            'visibility_settings' => isset($clinic['visibility_settings']) ? $clinic['visibility_settings'] : [],
             'config' => $config
         ];
 
@@ -503,7 +511,10 @@ class Admin extends MY_Controller
             return;
         }
         unset($clinic['admin_password_hash'], $clinic['reset_otp'], $clinic['reset_otp_expires'], $clinic['doctor_pin_hash']);
-        if (isset($clinic['config']['whatsapp']['access_token'])) {
+        // Fix C: expose slug so frontend cfgPopulate can read d.slug
+        $clinic['slug'] = $clinic['username'];
+        // Fix E: config is already decoded as array by _parseClinic, use array syntax
+        if (is_array($clinic['config']) && isset($clinic['config']['whatsapp']['access_token'])) {
             $clinic['config']['whatsapp']['access_token'] = '***';
         }
         $this->jsonResponse($clinic);
@@ -561,7 +572,8 @@ class Admin extends MY_Controller
             'slot_duration_min',
             'slot_mode',
             'custom_domain',
-            'google_review_link'
+            'google_review_link',
+            'package'  // Fix B: allow package plan changes from super admin
         ];
         $updateData = ['config' => json_encode($config)];
         foreach ($flatFields as $field) {
@@ -1218,7 +1230,7 @@ class Admin extends MY_Controller
                 'service' => $service,
                 'date' => $date,
                 'time_slot' => $timeSlotToUse,
-                'status' => 'confirmed',
+                'status' => isset($input['status']) ? trim($input['status']) : 'confirmed',
                 'source' => $apptSource,
                 'is_emergency' => $isEmergency,
                 'problem_note' => $problemNote
@@ -1330,14 +1342,25 @@ class Admin extends MY_Controller
         $this->requireRole('admin');
 
         try {
-            $result = $this->admin_model->cancelAppointment($id, $this->clinicId);
+            $clinic = $this->admin_model->getClinicById($this->clinicId, 'visibility_settings');
+            $vis = isset($clinic['visibility_settings']) 
+                ? (is_string($clinic['visibility_settings']) ? json_decode($clinic['visibility_settings'], true) : $clinic['visibility_settings'])
+                : [];
+            
+            $isManagePatients = !empty($vis['admin_manage_patients']);
+            if ($isManagePatients) {
+                $result = $this->admin_model->deleteAppointmentHard($id, $this->clinicId);
+            } else {
+                $result = $this->admin_model->cancelAppointment($id, $this->clinicId);
+            }
+
             if (!$result) {
                 $this->jsonResponse(['error' => 'Appointment not found or unauthorized'], 404);
                 return;
             }
-            $this->jsonResponse(['success' => true, 'message' => 'Appointment cancelled successfully']);
+            $this->jsonResponse(['success' => true, 'message' => $isManagePatients ? 'Record deleted successfully' : 'Appointment cancelled successfully']);
         } catch (\Exception $e) {
-            log_message('error', 'Cancel appointment error: ' . $e->getMessage());
+            log_message('error', 'Delete appointment error: ' . $e->getMessage());
             $this->jsonResponse(['error' => 'Internal server error'], 500);
         }
     }
@@ -1758,7 +1781,22 @@ class Admin extends MY_Controller
             } catch (\Exception $e2) {
                 log_message('error', 'Patient search fallback error: ' . $e2->getMessage());
                 $this->jsonResponse(['error' => 'Internal server error'], 500);
-            }
+    }
+
+    /**
+     * GET /api/patients/dashboard (Protected admin)
+     */
+    public function patient_dashboard()
+    {
+        $this->authenticate();
+        $this->requireRole('admin');
+
+        try {
+            $data = $this->admin_model->getPatientDashboard($this->clinicId);
+            $this->jsonResponse($data);
+        } catch (\Exception $e) {
+            log_message('error', 'Patient dashboard error: ' . $e->getMessage());
+            $this->jsonResponse(['error' => 'Internal server error'], 500);
         }
     }
 
@@ -2298,6 +2336,29 @@ class Admin extends MY_Controller
             'application/pdf' => 'pdf'
         ];
         return $map[$mime] ?? null;
+    }
+
+    /**
+     * View/stream document securely
+     */
+    public function view_document($clinicId, $patientPhone, $filename)
+    {
+        $clinicId = (int)$clinicId;
+        $patientPhone = preg_replace('/\D/', '', $patientPhone);
+        $filename = basename($filename);
+
+        $filePath = FCPATH . 'uploads/' . $clinicId . '/' . $patientPhone . '/' . $filename;
+
+        if (!file_exists($filePath)) {
+            show_404();
+            return;
+        }
+
+        $mime = mime_content_type($filePath);
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . filesize($filePath));
+        readfile($filePath);
+        exit;
     }
 
     /**

@@ -178,6 +178,12 @@ class Admin_model extends CI_Model {
         return $this->db->update('appointments');
     }
 
+    public function deleteAppointmentHard($id, $clinicId) {
+        $this->db->where('id', $id);
+        $this->db->where('clinic_id', $clinicId);
+        return $this->db->delete('appointments');
+    }
+
     public function update_appointment_status($id, $clinicId, $status) {
         $this->db->set('status', $status);
         $this->db->where('id', $id);
@@ -239,7 +245,7 @@ class Admin_model extends CI_Model {
     }
 
     public function getAppointmentsForSlots($clinicId, $date) {
-        $sql = "SELECT time_slot, source, patient_name, is_emergency 
+        $sql = "SELECT time_slot, source, patient_name, is_emergency, status 
                 FROM appointments 
                 WHERE clinic_id = ? AND date = ? AND status != 'cancelled'";
         $query = $this->db->query($sql, [$clinicId, $date]);
@@ -488,6 +494,85 @@ class Admin_model extends CI_Model {
             return '+' . $phone;
         }
         return '+91' . $phone;
+    }
+
+    public function getPatientDashboard($clinicId) {
+        // Today's appointments count & status breakdown
+        $todayStr = date('Y-m-d');
+        $todayAppts = $this->db->query(
+            "SELECT status, COUNT(*) AS count FROM appointments WHERE clinic_id = ? AND date = ? GROUP BY status",
+            [$clinicId, $todayStr]
+        )->result_array();
+
+        // Month stats (Current calendar month)
+        $startMonth = date('Y-m-01');
+        $endMonth = date('Y-m-t');
+
+        $totalVisitsMonth = $this->db->query(
+            "SELECT COUNT(*) AS count FROM appointments WHERE clinic_id = ? AND date BETWEEN ? AND ? AND status = 'completed'",
+            [$clinicId, $startMonth, $endMonth]
+        )->row_array();
+
+        $newPatientsMonth = $this->db->query(
+            "SELECT COUNT(DISTINCT patient_phone) AS count 
+             FROM appointments a1
+             WHERE clinic_id = ? AND date BETWEEN ? AND ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM appointments a2 
+                 WHERE a2.clinic_id = a1.clinic_id 
+                   AND a2.patient_phone = a1.patient_phone 
+                   AND a2.status = 'completed' 
+                   AND a2.date < ?
+               )",
+            [$clinicId, $startMonth, $endMonth, $startMonth]
+        )->row_array();
+
+        $revenueMonth = $this->db->query(
+            "SELECT SUM(amount_paid) AS sum FROM appointments WHERE clinic_id = ? AND date BETWEEN ? AND ? AND status = 'completed'",
+            [$clinicId, $startMonth, $endMonth]
+        )->row_array();
+
+        $pendingPayMonth = $this->db->query(
+            "SELECT SUM(treatment_cost - discount - amount_paid) AS sum 
+             FROM appointments 
+             WHERE clinic_id = ? AND date BETWEEN ? AND ? AND status = 'completed' AND payment_status != 'paid'",
+            [$clinicId, $startMonth, $endMonth]
+        )->row_array();
+
+        // Top 10 Patients by Visits
+        $topPatients = $this->db->query("
+            SELECT 
+                patient_name,
+                patient_phone,
+                COUNT(CASE WHEN status='completed' THEN 1 END) AS visits,
+                MAX(CASE WHEN status='completed' THEN date END) AS lastVisitDate,
+                SUM(amount_paid) AS total_paid,
+                SUM(CASE WHEN payment_status != 'paid' THEN (treatment_cost - discount - amount_paid) ELSE 0 END) AS outstanding_balance
+            FROM appointments
+            WHERE clinic_id = ?
+            GROUP BY patient_phone, patient_name
+            ORDER BY visits DESC
+            LIMIT 10
+        ", [$clinicId])->result_array();
+
+        // Recent patient activity (Last 5 completed)
+        $recentActivity = $this->db->query("
+            SELECT patient_name, patient_phone, service, date, time_slot, amount_paid, treatment_performed
+            FROM appointments
+            WHERE clinic_id = ? AND status = 'completed'
+            ORDER BY date DESC, time_slot DESC
+            LIMIT 5
+        ", [$clinicId])->result_array();
+
+        return [
+            'today_appointments' => $todayAppts,
+            'month_visits' => (int)($totalVisitsMonth['count'] ?? 0),
+            'month_new_patients' => (int)($newPatientsMonth['count'] ?? 0),
+            'month_revenue' => (float)($revenueMonth['sum'] ?? 0),
+            'month_pending' => (float)($pendingPayMonth['sum'] ?? 0),
+            'top_patients' => $topPatients,
+            'recent_activity' => $recentActivity
+        ];
     }
 
     public function parseJsonField($field) {

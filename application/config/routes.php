@@ -52,6 +52,7 @@ $route['api/slots/block']['POST'] = 'admin/block_slot';
 $route['api/slots/block']['DELETE'] = 'admin/unblock_slot';
 
 // Patient routes
+$route['api/patients/dashboard']['GET'] = 'admin/patient_dashboard';
 $route['api/patients/lookup']['GET'] = 'admin/patient_lookup';
 $route['api/patients/search']['GET'] = 'admin/patient_search';
 
@@ -78,6 +79,7 @@ $route['api/gallery/(:num)']['DELETE'] = 'admin/delete_gallery/$1';
 $route['api/upload/asset']['POST'] = 'admin/upload_asset';
 
 // Document routes
+$route['api/documents/view/(:num)/(:any)/(:any)']['GET'] = 'admin/view_document/$1/$2/$3';
 $route['api/documents']['GET'] = 'admin/get_documents';
 $route['api/documents']['POST'] = 'admin/upload_document';
 $route['api/documents/(:num)']['DELETE'] = 'admin/delete_document/$1';
