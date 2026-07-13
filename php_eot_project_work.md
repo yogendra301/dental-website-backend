@@ -1228,3 +1228,35 @@ Resolved auth token expiration and credential issues:
 - `getAuthToken` (prioritized sessionStorage)
 - `getClinicUsername` (prioritized sessionStorage)
 - `resolveClinicConfig` (prioritized sessionStorage)
+
+---
+
+# Task: Bulletproof System Security, Add Package 4, and Fix Clinic Cloning
+
+## Task Details
+
+Implemented comprehensive bulletproofing for system security, clinic creation, and packages:
+1. **Clinic Creation/Cloning Fixes**:
+   - Updated create_clinic() in Admin.php to correctly clone isibility_settings and contact_map_url from clinic_001, instead of using hardcoded defaults or leaving them empty.
+   - Ensured the package setting is cloned from clinic_001 (or defaults to 3).
+2. **Package 4 (Website Only)**:
+   - Added Package 4 ('Website only, no booking system either in website or admin') to the super admin panel dropdown.
+   - Updated frontend logic in dmin.js (pplyPackagePlanUI) so that Package 4 completely hides all booking-related tabs (Dashboard, Appointments, History, Follow-ups, Leads, Reports) even for super admins.
+3. **Security Audits**:
+   - Verified that both create_clinic and update_clinic_full are properly guarded by _requireSuperAdmin().
+   - Verified that the update_settings endpoint for regular clinics strictly ignores privilege escalation attempts for package or super_admin_only fields.
+4. **External Links**:
+   - Updated desktop and mobile admin portal links in index.html to include 	arget=_blank` to open in a new tab as requested.
+
+## Files Changed
+
+- ackend/application/controllers/Admin.php
+- rontend/admin.html
+- rontend/index.html
+- rontend/js/admin.js
+
+## Functions Implemented/Changed
+
+- create_clinic (Admin.php): Replaced hardcoded default visibility settings with dynamic clone logic for isibility_settings, contact_map_url, and package.
+- pplyPackagePlanUI (admin.js): Updated hideBookingTabs logic to forcefully hide all booking features if pkg === 4.
+

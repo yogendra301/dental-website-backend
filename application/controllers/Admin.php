@@ -662,7 +662,7 @@ class Admin extends MY_Controller
         $config['super_admin_only'] = false;
         $config['google_review_link'] = '';
 
-        $defaultVisibility = [
+        $defaultVisibility = $template && !empty($template['visibility_settings']) ? $template['visibility_settings'] : [
             'show_gallery' => true,
             'show_pricing' => true,
             'show_ratings' => true,
@@ -689,13 +689,14 @@ class Admin extends MY_Controller
             'slot_duration_min' => $template ? (int) ($template['slot_duration_min'] ?? 30) : 30,
             'contact_phone' => $phone,
             'contact_address' => $address,
-            'contact_map_url' => '',
+            'contact_map_url' => $template ? ($template['contact_map_url'] ?? '') : '',
             'admin_password_hash' => password_hash($password, PASSWORD_BCRYPT),
             'admin_email' => $input['admin_email'] ?? null,
             'slot_mode' => $template ? ($template['slot_mode'] ?? 'fixed') : 'fixed',
             'config' => json_encode($config),
-            'visibility_settings' => json_encode($defaultVisibility),
+            'visibility_settings' => is_string($defaultVisibility) ? $defaultVisibility : json_encode($defaultVisibility),
             'reviews' => $template ? ($template['reviews'] ?? '[]') : '[]',
+            'package' => $template ? (isset($template['package']) ? (int)$template['package'] : 3) : 3,
         ];
 
         $newId = $this->admin_model->createClinic($data);
