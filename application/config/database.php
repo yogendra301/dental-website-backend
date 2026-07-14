@@ -5,10 +5,10 @@ $active_group = 'default';
 $query_builder = TRUE;
 
 $db['default'] = array(
-	'dsn'	=> '',
+	'dsn' => '',
 	'hostname' => 'localhost',
-	'username' => 'root',
-	'password' => '',
+	'username' => 'yogi',
+	'password' => 'Yogen@1234',
 	'database' => 'dental_clinic',
 	'dbdriver' => 'mysqli',
 	'dbprefix' => '',
