@@ -55,6 +55,7 @@ $route['api/slots/block']['DELETE'] = 'admin/unblock_slot';
 $route['api/patients/dashboard']['GET'] = 'admin/patient_dashboard';
 $route['api/patients/lookup']['GET'] = 'admin/patient_lookup';
 $route['api/patients/search']['GET'] = 'admin/patient_search';
+$route['api/patients/count']['GET'] = 'admin/get_patients_count';
 
 // Lead routes
 $route['api/leads']['GET'] = 'admin/get_leads';

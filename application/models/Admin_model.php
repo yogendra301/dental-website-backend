@@ -573,12 +573,18 @@ class Admin_model extends CI_Model {
             'top_patients' => $topPatients,
             'recent_activity' => $recentActivity
         ];
-    }
+     }
 
-    public function parseJsonField($field) {
-        if (is_string($field)) {
-            return json_decode($field, true);
-        }
-        return $field ?: [];
-    }
+     public function getPatientsCount($clinicId) {
+         $query = $this->db->query("SELECT COUNT(DISTINCT patient_phone) AS count FROM appointments WHERE clinic_id = ?", [$clinicId]);
+         $row = $query->row_array();
+         return (int)($row['count'] ?? 0);
+     }
+
+     public function parseJsonField($field) {
+         if (is_string($field)) {
+             return json_decode($field, true);
+         }
+         return $field ?: [];
+     }
 }

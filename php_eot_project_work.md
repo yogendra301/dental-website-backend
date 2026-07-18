@@ -1257,6 +1257,33 @@ Implemented comprehensive bulletproofing for system security, clinic creation, a
 
 ## Functions Implemented/Changed
 
-- create_clinic (Admin.php): Replaced hardcoded default visibility settings with dynamic clone logic for isibility_settings, contact_map_url, and package.
-- pplyPackagePlanUI (admin.js): Updated hideBookingTabs logic to forcefully hide all booking features if pkg === 4.
+- create_clinic (Admin.php): Replaced hardcoded default visibility settings with dynamic clone logic for  isibility_settings, contact_map_url, and package.
+-  pplyPackagePlanUI (admin.js): Updated hideBookingTabs logic to forcefully hide all booking features if pkg === 4.
 
+---
+
+# Task: Premium Redesign of Patients / History Page
+
+## Task Details
+
+Redesigned the Patients page header and individual list item cards to match the premium modern aesthetics, specifically for Package 3 and clinics with patient record management (`isManagePatients === true`). 
+- Added a new API endpoint `api/patients/count` returning the total unique patient count.
+- Split the HTML history header into `history-header-standard` and a beautiful card-based `history-header-premium` with user count badge, custom icons, and synchronized filter chips. Made the premium header vertically more compact.
+- Implemented card redesign inside `appointment-card.js` with status-colored left stripes, clock/time info, a vertical divider, generic avatar icon, patient name, phone, treatment badge, action buttons, and source/status tags. Made the cards longer vertically, and gated them behind `opts.isPremiumStyle` to prevent layout issues in compact views (like search slideout and dashboard widgets).
+
+## Files Changed
+
+- `backend/application/config/routes.php`
+- `backend/application/controllers/Admin.php`
+- `backend/application/models/Admin_model.php`
+- `frontend/admin.html`
+- `frontend/js/admin.js`
+- `frontend/js/appointment-card.js`
+
+## Functions Implemented/Changed
+
+- `admin/get_patients_count` (in `Admin.php`): Added API endpoint.
+- `Admin_model::getPatientsCount` (in `Admin_model.php`): Added unique patient count query.
+- `initHistoryTab` (in `admin.js`): Synchronized standard and premium filter chips and custom date fields.
+- `loadHistoryData` (in `admin.js`): Toggled standard vs. premium header cards and fetched total patient count.
+- `renderAppointmentCard` (in `appointment-card.js`): Refactored appointment card elements to render the premium layout if `isManagePatients` is active.

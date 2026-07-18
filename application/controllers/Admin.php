@@ -1817,6 +1817,23 @@ class Admin extends MY_Controller
         }
     }
 
+    /**
+     * GET /api/patients/count (Protected admin)
+     */
+    public function get_patients_count()
+    {
+        $this->authenticate();
+        $this->requireRole('admin');
+
+        try {
+            $count = $this->admin_model->getPatientsCount($this->clinicId);
+            $this->jsonResponse(['count' => $count]);
+        } catch (\Exception $e) {
+            log_message('error', 'Get patients count error: ' . $e->getMessage());
+            $this->jsonResponse(['error' => 'Internal server error'], 500);
+        }
+    }
+
     // ============================================================
     // LEAD ENDPOINTS
     // ============================================================
