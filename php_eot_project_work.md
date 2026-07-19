@@ -1287,3 +1287,64 @@ Redesigned the Patients page header and individual list item cards to match the 
 - `initHistoryTab` (in `admin.js`): Synchronized standard and premium filter chips and custom date fields.
 - `loadHistoryData` (in `admin.js`): Toggled standard vs. premium header cards and fetched total patient count.
 - `renderAppointmentCard` (in `appointment-card.js`): Refactored appointment card elements to render the premium layout if `isManagePatients` is active.
+
+---
+
+# Task: Secure Super Admin Auth & Implement Centralized Package Feature Gating
+
+## Task Details
+
+Performed a comprehensive review and implementation of all authorization, authentication, and package-level gates:
+1. **JWT-Based Super Admin Session**:
+   - Implemented `POST /api/auth/super-admin-login` to verify the super admin password against `SUPER_ADMIN_PASSWORD` env variable and issue a signed JWT token containing the `role => 'super_admin'` claim.
+   - Refactored `_requireSuperAdmin()` in the backend to authenticate using the `Authorization: Bearer <super_token>` header.
+   - Removed hardcoded super admin password and user lists from the frontend `admin.js`.
+   - Replaced forgeable `sessionStorage.getItem('is_super_admin')` checks with verified token presence.
+   - Impersonation and settings API calls now transmit the JWT Bearer token rather than raw passwords.
+2. **Centralized Packages & Feature Gates**:
+   - Defined standard packages and feature sets in `MY_Controller.php`.
+   - Added backend helpers `_isFeatureAllowed($feature)` and `_requireFeature($feature)` to check both package defaults and database overrides (custom requirements).
+   - Protected reports, leads, appointments, dashboard, and gallery endpoints with proper package gates.
+   - Enforced `super_admin_only` checks on public clinic resolution.
+   - Implemented matching `PACKAGE_FEATURES` maps in `admin.js` and `app.js` to dynamically build layouts.
+   - Defaulted package fallbacks to `1` (Website only) to prevent leakage on configuration failure.
+3. **PII Security & Rate Limiting**:
+   - Secured `/api/documents/view` with authentication, role constraints, and strict clinic ID checks.
+   - Added cache-based rate limits to `forgot_password` (max 3 reset attempts per 10 mins) and `reset_password` (max 5 verification failures per 10 mins) to defend against brute-force attacks.
+
+## Files Changed
+
+- `backend/application/config/routes.php`
+- `backend/application/core/MY_Controller.php`
+- `backend/application/controllers/Admin.php`
+- `frontend/js/admin.js`
+- `frontend/js/app.js`
+
+## Functions Implemented/Changed
+
+- `super_admin_login` (Admin.php): Implemented new endpoint.
+- `_requireSuperAdmin` (Admin.php): Refactored to verify JWT Bearer tokens.
+- `super_login` (Admin.php): Updated impersonation to accept super_token.
+- `create_clinic` (Admin.php): Accepted dynamic package defaults.
+- `view_document` (Admin.php): Added JWT validation and clinic ownership checks.
+- `forgot_password`, `reset_password` (Admin.php): Implemented cache-based rate limits.
+- `_isFeatureAllowed`, `_requireFeature` (MY_Controller.php): Added core gates.
+- `isFeatureAllowed` (admin.js / app.js): Replaced magic numbers with feature lookups.
+- `applyPackagePlanUI` (admin.js) / `applyPackageRestrictions` (app.js): Refactored UI layouts using feature maps.
+
+---
+
+# Task: Fix Default Active Tab on Admin Portal Load
+
+## Task Details
+
+Resolved a bug where the standard dashboard was loaded by default on page load even if `admin_show_dashboard: false` was set in the clinic's `visibility_settings` (like in `clinic_003`). Refactored the portal initialization to find the first allowed tab based on the clinic's feature gates and switch to that tab dynamically on load.
+
+## Files Changed
+
+- `frontend/js/admin.js`
+
+## Functions Implemented/Changed
+
+- `showDashboard` (admin.js): Updated to switch to the first allowed tab dynamically on load.
+

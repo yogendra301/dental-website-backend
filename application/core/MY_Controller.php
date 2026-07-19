@@ -11,9 +11,131 @@ class MY_Controller extends CI_Controller {
     protected $role = null;
     protected $jwtSecret;
 
+    // Centralized packages and feature mappings.
+    // Easily extensible: to create a new package, add an entry to this array.
+    protected $packages = [
+        1 => [
+            'name' => 'Basic Website Only',
+            'features' => [
+                'website' => true,
+                'booking' => false,
+                'admin_panel' => false,
+                'leads' => false,
+                'reports' => false,
+                'gallery' => true,
+                'patient_management' => false,
+            ]
+        ],
+        2 => [
+            'name' => 'Website + WhatsApp Booking',
+            'features' => [
+                'website' => true,
+                'booking' => true,
+                'whatsapp_booking' => true,
+                'admin_panel' => false,
+                'leads' => false,
+                'reports' => false,
+                'gallery' => true,
+                'patient_management' => false,
+            ]
+        ],
+        3 => [
+            'name' => 'Full Premium Clinic Suite',
+            'features' => [
+                'website' => true,
+                'booking' => true,
+                'db_booking' => true,
+                'admin_panel' => true,
+                'dashboard' => true,
+                'history' => true,
+                'followups' => true,
+                'leads' => true,
+                'reports' => true,
+                'gallery' => true,
+                'patient_management' => true,
+            ]
+        ],
+        4 => [
+            'name' => 'Custom Standard Package',
+            'features' => [
+                'website' => true,
+                'booking' => false,
+                'admin_panel' => true,
+                'clinic_config' => true,
+                'gallery' => true,
+                'dashboard' => false,
+                'history' => false,
+                'followups' => false,
+                'leads' => false,
+                'reports' => false,
+                'patient_management' => false,
+            ]
+        ]
+    ];
+
+    /**
+     * Checks if a specific feature is enabled for the current clinic session.
+     * Checks package map default and clinic visibility setting overrides (custom requirements).
+     */
+    protected function _isFeatureAllowed($feature) {
+        if ($this->role === 'super_admin') {
+            return true;
+        }
+
+        if (empty($this->clinicId)) {
+            return false;
+        }
+
+        // Fetch current clinic package and settings
+        $clinic = $this->admin_model->getClinicById($this->clinicId);
+        if (!$clinic) {
+            return false;
+        }
+
+        $packageId = isset($clinic['package']) ? (int)$clinic['package'] : 1;
+        $packageFeatures = isset($this->packages[$packageId]) ? $this->packages[$packageId]['features'] : [];
+        $packageAllowed = isset($packageFeatures[$feature]) ? (bool)$packageFeatures[$feature] : false;
+
+        // Check if clinic has custom overrides via visibility_settings
+        $visibility = [];
+        if (isset($clinic['visibility_settings'])) {
+            $visibility = is_string($clinic['visibility_settings']) 
+                ? json_decode($clinic['visibility_settings'], true) 
+                : $clinic['visibility_settings'];
+        }
+
+        // Map feature identifier to matching visibility configuration key
+        $visibilityKey = 'admin_show_' . $feature;
+        if ($feature === 'patient_management') {
+            $visibilityKey = 'admin_manage_patients';
+        }
+
+        // Clinic custom settings take precedence for enabling/disabling individual features
+        if (isset($visibility[$visibilityKey])) {
+            return (bool)$visibility[$visibilityKey];
+        }
+
+        return $packageAllowed;
+    }
+
+    /**
+     * Blocks access if the specified feature is not allowed.
+     */
+    protected function _requireFeature($feature) {
+        if (!$this->_isFeatureAllowed($feature)) {
+            $this->jsonResponse(['error' => 'Forbidden: This feature is not enabled for your package plan.'], 403);
+            $this->output->_display();
+            exit;
+        }
+    }
+
     public function __construct() {
         parent::__construct();
-        $this->jwtSecret = getenv('JWT_SECRET') ?: 'dental_portal_fallback_secret_key_32chars!';
+        $this->jwtSecret = getenv('JWT_SECRET');
+        if (empty($this->jwtSecret)) {
+            log_message('error', '[JWT] JWT_SECRET env key is not configured.');
+            show_error('Configuration Error: Encryption Key is missing.', 500);
+        }
 
         // CORS: restrict to allowed origins from env, fallback to wildcard for dev
         $allowedOrigins = getenv('ALLOWED_ORIGINS');

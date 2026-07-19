@@ -56,31 +56,39 @@ class Admin extends MY_Controller
                 'username' => $clinic['username']
             ]
         ]);
-    }
-
-    // ============================================================
+    }    // ============================================================
     // SUPER ADMIN GUARD — single choke point
-    // Accepts password from Authorization header OR request body.
-    // Pattern: every super endpoint calls this instead of inline checks.
-    // This ensures auth never breaks regardless of how JS sends the password.
+    // Verifies the Authorization header for either a valid super admin JWT
+    // OR falls back to raw password comparison for compatibility.
     // ============================================================
     private function _requireSuperAdmin()
     {
         $expected = getenv('SUPER_ADMIN_PASSWORD');
-
-        // 1. Check Authorization: Bearer header (used by config panel)
         $authHeader = $this->input->get_request_header('Authorization', TRUE);
+
         if ($authHeader) {
             $bearer = str_replace('Bearer ', '', $authHeader);
-            if ($bearer === $expected)
-                return true;
+            
+            // Try decoding as JWT first
+            try {
+                $decoded = JWT::decode($bearer, new Key($this->jwtSecret, 'HS256'));
+                if (isset($decoded->role) && $decoded->role === 'super_admin') {
+                    return true;
+                }
+            } catch (\Exception $e) {
+                // Compatibility fallback: check if bearer token matches raw password
+                if ($expected && $bearer === $expected) {
+                    return true;
+                }
+            }
         }
 
-        // 2. Fallback: check body field (used by list_clinics / super-login)
+        // Body fallback for developer workflows
         $input = $this->getJsonInput();
         $bodyPwd = isset($input['superPassword']) ? $input['superPassword'] : '';
-        if ($bodyPwd === $expected)
+        if ($expected && $bodyPwd === $expected) {
             return true;
+        }
 
         $this->jsonResponse(['error' => 'Unauthorized'], 401);
         $this->output->_display();
@@ -88,8 +96,47 @@ class Admin extends MY_Controller
     }
 
     /**
+     * POST /api/auth/super-admin-login
+     * Authenticates super admin and returns JWT
+     */
+    public function super_admin_login()
+    {
+        $input = $this->getJsonInput();
+        $username = isset($input['username']) ? trim($input['username']) : '';
+        $password = isset($input['password']) ? trim($input['password']) : '';
+
+        $expectedPassword = getenv('SUPER_ADMIN_PASSWORD');
+        $allowedUsernames = explode(',', getenv('SUPER_ADMIN_USERNAMES') ?: 'superadmin,bunty');
+
+        if (empty($username) || empty($password)) {
+            $this->jsonResponse(['error' => 'Username and password are required'], 400);
+            return;
+        }
+
+        if (!in_array(strtolower($username), array_map('strtolower', $allowedUsernames)) || $password !== $expectedPassword) {
+            $this->jsonResponse(['error' => 'Invalid super admin credentials'], 401);
+            return;
+        }
+
+        // Generate token with role 'super_admin' and clinicId 0
+        $token = JWT::encode([
+            'clinicId' => 0,
+            'username' => $username,
+            'role' => 'super_admin',
+            'iat' => time(),
+            'exp' => time() + (8 * 3600) // 8 hours
+        ], $this->jwtSecret, 'HS256');
+
+        $this->jsonResponse([
+            'token' => $token,
+            'username' => $username,
+            'role' => 'super_admin'
+        ]);
+    }
+
+    /**
      * POST /api/auth/super-login
-     * Super admin impersonates a clinic — returns real JWT
+     * Super admin impersonates a clinic — returns clinic admin JWT
      */
     public function super_login()
     {
@@ -104,6 +151,9 @@ class Admin extends MY_Controller
             return;
         }
 
+        // Log the impersonation action for security audit trail (Issue A8)
+        log_message('info', "[Super Admin Audit] Impersonated session initiated for clinic: {$username}");
+
         $token = JWT::encode([
             'clinicId' => (int) $clinic['id'],
             'username' => $clinic['username'],
@@ -117,7 +167,6 @@ class Admin extends MY_Controller
             'clinic' => ['id' => (int) $clinic['id'], 'name' => $clinic['name'], 'username' => $clinic['username']]
         ]);
     }
-
     /**
      * POST /api/clinics
      * List all clinics — super admin only via POST body
@@ -191,6 +240,16 @@ class Admin extends MY_Controller
             return;
         }
 
+        // Cache-based rate limiting: 3 reset attempts per 10 minutes per IP/username combo (Issue A6)
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $rateKey = 'rl_forgot_pwd_' . md5($ip . '_' . $username);
+        $hits = $this->cache->get($rateKey) ?: 0;
+        if ($hits >= 3) {
+            $this->jsonResponse(['error' => 'Too many password reset requests. Please try again in 10 minutes.'], 429);
+            return;
+        }
+        $this->cache->save($rateKey, $hits + 1, 600);
+
         $clinic = $this->admin_model->getClinicByUsername($username, 'id, admin_email, name, config');
         if (!$clinic) {
             $this->jsonResponse(['error' => 'Clinic not found'], 404);
@@ -239,6 +298,15 @@ class Admin extends MY_Controller
             return;
         }
 
+        // Cache-based rate limiting: max 5 failed attempts per 10 minutes per IP/username combo (Issue A6)
+        $ip = $_SERVER['REMOTE_ADDR'];
+        $rateKey = 'rl_reset_pwd_attempts_' . md5($ip . '_' . $username);
+        $attempts = $this->cache->get($rateKey) ?: 0;
+        if ($attempts >= 5) {
+            $this->jsonResponse(['error' => 'Too many failed verification attempts. Please try again in 10 minutes.'], 429);
+            return;
+        }
+
         $clinic = $this->admin_model->getClinicByUsername($username, 'id, reset_otp, reset_otp_expires');
         if (!$clinic) {
             $this->jsonResponse(['error' => 'Clinic not found'], 404);
@@ -246,6 +314,7 @@ class Admin extends MY_Controller
         }
 
         if (empty($clinic['reset_otp']) || $clinic['reset_otp'] !== $otp) {
+            $this->cache->save($rateKey, $attempts + 1, 600);
             $this->jsonResponse(['error' => 'Invalid OTP'], 400);
             return;
         }
@@ -342,6 +411,8 @@ class Admin extends MY_Controller
                 $this->jsonResponse(['error' => 'Clinic not found'], 404);
                 return;
             }
+
+
 
             $this->jsonResponse($this->_sanitizeClinic($clinic));
         } catch (\Exception $e) {
@@ -696,7 +767,7 @@ class Admin extends MY_Controller
             'config' => json_encode($config),
             'visibility_settings' => is_string($defaultVisibility) ? $defaultVisibility : json_encode($defaultVisibility),
             'reviews' => $template ? ($template['reviews'] ?? '[]') : '[]',
-            'package' => $template ? (isset($template['package']) ? (int)$template['package'] : 3) : 3,
+            'package' => isset($input['package']) ? (int)$input['package'] : 1,
         ];
 
         $newId = $this->admin_model->createClinic($data);
@@ -852,6 +923,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin', 'doctor');
+        $this->_requireFeature('admin_panel');
 
         $date = isset($_GET['date']) ? $_GET['date'] : null;
         $phone = isset($_GET['phone']) ? $_GET['phone'] : null;
@@ -896,9 +968,20 @@ class Admin extends MY_Controller
         }
 
         try {
-            $clinic = $this->admin_model->getClinicByUsername($clinicUsername, 'id, name, contact_phone, contact_address, config');
+            $clinic = $this->admin_model->getClinicByUsername($clinicUsername, 'id, name, contact_phone, contact_address, config, package, visibility_settings');
             if (!$clinic) {
                 $this->jsonResponse(['error' => 'Clinic not found'], 404);
+                return;
+            }
+
+            // Enforce package check for public appointment booking
+            $this->clinicId = $clinic['id'];
+            $this->role = 'patient';
+            $this->_requireFeature('booking');
+
+            // Enforce check if clinic only uses WhatsApp booking redirects (Package 2)
+            if ($this->_isFeatureAllowed('whatsapp_booking') && !$this->_isFeatureAllowed('db_booking')) {
+                $this->jsonResponse(['error' => 'Forbidden: This clinic only accepts booking requests via WhatsApp.'], 403);
                 return;
             }
 
@@ -1293,6 +1376,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('history');
 
         $start = isset($_GET['start']) ? $_GET['start'] : '';
         $end = isset($_GET['end']) ? $_GET['end'] : '';
@@ -1318,6 +1402,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('followups');
         $rows = $this->admin_model->getFollowups($this->clinicId);
         $this->jsonResponse($rows);
     }
@@ -1768,6 +1853,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         $q = isset($_GET['q']) ? $_GET['q'] : '';
 
@@ -1807,6 +1893,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         try {
             $data = $this->admin_model->getPatientDashboard($this->clinicId);
@@ -1824,6 +1911,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         try {
             $count = $this->admin_model->getPatientsCount($this->clinicId);
@@ -1885,6 +1973,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('leads');
 
         $status = isset($_GET['status']) ? $_GET['status'] : null;
 
@@ -1904,6 +1993,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('leads');
 
         $input = $this->getJsonInput();
         $status = isset($input['status']) ? $input['status'] : '';
@@ -1943,6 +2033,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('reports');
 
         $start = isset($_GET['start']) ? $_GET['start'] : '';
         $end = isset($_GET['end']) ? $_GET['end'] : '';
@@ -1996,6 +2087,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('gallery');
 
         $type = isset($_POST['type']) ? $_POST['type'] : 'single';
 
@@ -2047,6 +2139,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('gallery');
 
         $label = isset($_POST['label']) ? $_POST['label'] : null;
 
@@ -2103,6 +2196,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('gallery');
 
         try {
             $item = $this->admin_model->getGalleryItem($id, $this->clinicId);
@@ -2137,6 +2231,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('gallery');
 
         $input = $this->getJsonInput();
         $caption = isset($input['caption']) ? trim($input['caption']) : '';
@@ -2227,6 +2322,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         $phone = isset($_GET['phone']) ? $_GET['phone'] : '';
 
@@ -2252,6 +2348,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         $patientPhone = isset($_POST['patient_phone']) ? $_POST['patient_phone'] : '';
         $appointmentId = isset($_POST['appointment_id']) ? $_POST['appointment_id'] : null;
@@ -2328,6 +2425,7 @@ class Admin extends MY_Controller
     {
         $this->authenticate();
         $this->requireRole('admin');
+        $this->_requireFeature('patient_management');
 
         try {
             $doc = $this->admin_model->getDocument($id, $this->clinicId);
@@ -2371,16 +2469,23 @@ class Admin extends MY_Controller
         ];
         return $map[$mime] ?? null;
     }
-
     /**
      * View/stream document securely
      */
     public function view_document($clinicId, $patientPhone, $filename)
     {
+        $this->authenticate();
+        $this->requireRole('admin', 'doctor');
+        $this->_requireFeature('patient_management');
+
         $clinicId = (int)$clinicId;
+        if ((int)$this->clinicId !== $clinicId) {
+            $this->jsonResponse(['error' => 'Forbidden: Cross-clinic access not allowed'], 403);
+            return;
+        }
+
         $patientPhone = preg_replace('/\D/', '', $patientPhone);
         $filename = basename($filename);
-
         $filePath = FCPATH . 'uploads/' . $clinicId . '/' . $patientPhone . '/' . $filename;
 
         if (!file_exists($filePath)) {

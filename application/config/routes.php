@@ -10,6 +10,7 @@ $route['translate_uri_dashes'] = FALSE;
 
 // Auth routes
 $route['api/auth/login']['POST'] = 'admin/login';
+$route['api/auth/super-admin-login']['POST'] = 'admin/super_admin_login';
 $route['api/auth/super-login']['POST'] = 'admin/super_login';
 $route['api/auth/doctor-login']['POST'] = 'admin/doctor_login';
 $route['api/auth/forgot-password']['POST'] = 'admin/forgot_password';
